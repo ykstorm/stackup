@@ -2,60 +2,88 @@ export const metadata = {
   title: 'GitOps & Canary — Stackup',
 };
 
+const QUERY = `sum(rate(http_requests_total{service="demo", code=~"2.."}[2m]))
+/
+sum(rate(http_requests_total{service="demo"}[2m]))`;
+
 export default function GitopsCanary() {
   return (
     <>
       <h1>GitOps &amp; Canary</h1>
       <p className="lede">
-        How a single commit turns into a canary rollout gated on Prometheus,
-        with automatic rollback when the analysis fails.
+        How a commit turns into a canary rollout, what Prometheus measures,
+        and what happens when the measurement fails.
       </p>
 
       <h2>The trigger</h2>
       <p>
-        Push a commit that bumps <code>helm/buyerchat/values.yaml</code>{' '}
-        <code>image.tag</code>. ArgoCD notices the change and syncs. Argo
-        Rollouts applies the new Rollout revision. Watch it advance:
+        Build the new image into kind with{' '}
+        <code>make demo-image DEMO_IMAGE=stackup-demo:v2</code>, then bump{' '}
+        <code>image.tag</code> in <code>helm/demo/values.yaml</code>, commit, and
+        push. ArgoCD polls the repository every three minutes, syncs the change,
+        and Argo Rollouts starts a new revision. Watch it:
       </p>
       <pre>
         <code>{`make rollout-status
-# same as: kubectl argo rollouts get rollout buyerchat -n app --watch`}</code>
+# kubectl argo rollouts get rollout demo -n app --watch`}</code>
       </pre>
 
-      <h2>The canary steps</h2>
-      <p>
-        Argo Rollouts shifts 25% of traffic to the new version and pauses, then
-        runs an analysis step. An <code>AnalysisTemplate</code> queries
-        Prometheus three times over 90 seconds. If the success condition holds,
-        the rollout advances to 50%, then 75%, then 100%. If the analysis fails,
-        Argo Rollouts aborts and rolls back to the previous revision. This is the
-        canary pattern teams run in production, reproduced on a laptop.
-      </p>
-
+      <h2>The steps</h2>
       <ol>
-        <li>Scale the canary to 25% of traffic and pause.</li>
-        <li>Run the Prometheus analysis query three times over 90 seconds.</li>
-        <li>If the gate passes, advance to 50%, then 75%, then 100%.</li>
-        <li>If the gate fails, abort and revert to the previous revision.</li>
+        <li>Set the canary weight to 25%, then pause 30 seconds.</li>
+        <li>
+          Run the analysis: after a 30-second delay, query Prometheus three
+          times, 30 seconds apart.
+        </li>
+        <li>
+          If the gate holds, move to 50%, 75% and 100%, pausing 30 seconds
+          between steps.
+        </li>
+        <li>
+          If two of the three measurements fail, abort: the new pods are scaled
+          down and the old version keeps serving.
+        </li>
       </ol>
+      <p>
+        There is no traffic router, so a weight is a share of the pods. With
+        two replicas, the 25% step runs one new pod next to the two old ones.
+      </p>
 
       <h2>The analysis query</h2>
       <p>
-        The current analysis query is a conservative liveness check: is the
-        canary up and being scraped. Once the buyerchat image exports request
-        counters on <code>/api/metrics</code>, swap it for a real success-rate
-        ratio. The template carries a <code>TODO</code> marking the one line to
-        change.
+        The <code>AnalysisTemplate</code> in <code>helm/demo</code> computes the
+        share of requests that returned a 2xx status over the last two minutes:
+      </p>
+      <pre>
+        <code>{QUERY}</code>
+      </pre>
+      <p>
+        A measurement passes when the result is at least 0.95. The template
+        allows one failed measurement (<code>failureLimit: 1</code>); a second
+        one fails the AnalysisRun. The query covers every pod behind the
+        Service, old and new, so the new version&apos;s errors are averaged in
+        with the old version&apos;s traffic.
+      </p>
+
+      <h2>Seeing it abort</h2>
+      <p>
+        Probes and Prometheus scrapes always return 200, so with no other
+        traffic the ratio stays at 1.0. To watch the gate fail, start the curl
+        pods in <code>ci/traffic.yaml</code>, then set{' '}
+        <code>failureRate: &quot;0.5&quot;</code> in{' '}
+        <code>helm/demo/values.yaml</code> and push. The new pods fail half of
+        their <code>/api/work</code> calls, the ratio drops below 0.95, and the
+        Rollout stops as <code>Degraded</code> with the old pods still serving.
+        A revert brings it back to <code>Healthy</code>.
       </p>
 
       <h2>Why GitOps for this</h2>
       <p>
-        Because the image tag lives in git and ArgoCD reconciles against it, the
-        rollout has a single source of truth. There is no out-of-band{' '}
+        The image tag lives in git and ArgoCD reconciles against it, so the
+        rollout has one source of truth. There is no out-of-band{' '}
         <code>kubectl set image</code>. A reviewer can read the diff that
-        triggered a deploy, and a revert is a git revert. The canary gate then
-        decides whether that change reaches all traffic, with Prometheus as the
-        judge.
+        triggered a deploy, and undoing it is a git revert. The canary gate then
+        decides whether that change reaches every pod.
       </p>
     </>
   );

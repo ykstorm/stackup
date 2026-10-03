@@ -1,0 +1,42 @@
+# kube-prometheus-stack: the upstream chart (pinned) with this repository's
+# values file, infra/kube-prometheus-stack/values.yaml.
+#
+# The release name `kps` matters: the demo's ServiceMonitor carries
+# `release: kps`, and the Grafana Service is kps-grafana (make port-forward).
+# Server-side apply because the Prometheus operator's CRDs are larger than
+# the annotation a client-side apply writes.
+#
+# Wave 1 of the root: its Grafana Ingress needs ingress-nginx and
+# cert-manager from wave 0.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: stackup
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: 84.5.0
+      helm:
+        releaseName: kps
+        valueFiles:
+          - $values/infra/kube-prometheus-stack/values.yaml
+    - repoURL: {{ .Values.repoURL }}
+      targetRevision: {{ .Values.targetRevision }}
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  ignoreDifferences:
+    {{- include "stackup.ignoreWebhookCaBundle" . | nindent 4 }}
+  syncPolicy:
+    {{- include "stackup.syncPolicy" . | nindent 4 }}
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

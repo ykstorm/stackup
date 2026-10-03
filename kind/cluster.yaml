@@ -2,17 +2,18 @@ kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: stackup
 networking:
+  # Calico replaces kind's default CNI (kindnet), which does not enforce
+  # the egress half of a NetworkPolicy. See kind/calico/README.md.
   disableDefaultCNI: true
   podSubnet: 192.168.0.0/16
 nodes:
   - role: control-plane
-    # Required for ingress-nginx (hostPort 80/443 on the kind node
-    # is only reachable from the host if Docker publishes the node
-    # container's 80/443 to the host). Without these mappings,
-    # https://buyerchat.localtest.me/ resolves to 127.0.0.1 but the
-    # request never reaches the controller. Adding/changing
-    # extraPortMappings requires recreating the cluster (down.ps1 +
-    # up.ps1) — kind cannot mutate node port publishing in place.
+    # ingress-nginx binds hostPort 80/443 on this node. The host only
+    # reaches those ports if Docker publishes the node container's 80/443,
+    # which is what these mappings do; without them https://*.localtest.me
+    # resolves to 127.0.0.1 but never reaches the controller. kind cannot
+    # change port mappings on an existing cluster, so changing them means
+    # recreating it (make down && make up).
     extraPortMappings:
       - containerPort: 80
         hostPort: 80

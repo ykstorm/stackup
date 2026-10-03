@@ -1,92 +1,49 @@
-# sealed-secrets (P3 Day 3)
+# sealed-secrets
 
-Bitnami's sealed-secrets controller. Lets us commit encrypted Secret
-material to git and have the in-cluster controller decrypt it into a
-real `Secret` at apply time.
+The Sealed Secrets controller lets encrypted Secret material live in git. The controller in the cluster decrypts each `SealedSecret` into a regular `Secret`.
 
-## Install
+## How it is installed
 
-```sh
-helm repo add sealed-secrets https://bitnami-labs.github.io/sealed-secrets
-helm repo update sealed-secrets
-
-helm install sealed-secrets sealed-secrets/sealed-secrets \
-  --namespace kube-system \
-  --wait --timeout 3m
-```
-
-The controller release name `sealed-secrets` and namespace
-`kube-system` are baked into the `kubeseal` invocations in this repo
-(see `helm/buyerchat/templates/sealed-secret.yaml` provenance) — if
-you change either, every `kubeseal` call needs the matching
-`--controller-name` / `--controller-namespace` flags.
+`controller.yaml` in this directory is the upstream release manifest for `v0.27.1`, unchanged apart from a header comment. The `sealed-secrets` Application in `argocd/apps/templates/sealed-secrets.yaml` applies it in sync wave 1; it creates the `sealed-secrets-controller` Deployment and Service in `kube-system`. The manifest is kept in the repository because the project's Helm repository index (`bitnami-labs.github.io/sealed-secrets/index.yaml`) returns 404, so an Application pointing at that chart cannot render. To upgrade, replace the file with the `controller.yaml` of a newer release.
 
 ## Verify
 
 ```sh
-kubectl get pods -n kube-system -l app.kubernetes.io/name=sealed-secrets
+kubectl get pods -n kube-system -l name=sealed-secrets-controller
 # expect: 1/1 Running
 
 kubeseal --version
-# expect: 0.27.2 or compatible
 ```
 
-## Encrypting a Secret (round-trip example)
+## Encrypting a Secret
+
+`kubeseal` looks for a controller named `sealed-secrets-controller` in `kube-system` by default, which is what the release manifest creates.
 
 ```sh
-# 1. Create the plaintext Secret YAML (do NOT apply it).
+# 1. Write the plaintext Secret to a file; do not apply it.
 kubectl create secret generic example \
   --from-literal=KEY=value \
-  --dry-run=client -o yaml \
-  > /tmp/example.yaml
+  --dry-run=client -o yaml > /tmp/example.yaml
 
-# 2. Encrypt with kubeseal — the resulting YAML is safe to commit.
-cat /tmp/example.yaml \
-  | kubeseal --format yaml \
-      --controller-namespace kube-system \
-      --controller-name sealed-secrets \
-  > example-sealed.yaml
+# 2. Encrypt it. The output is safe to commit.
+kubeseal --format yaml < /tmp/example.yaml > example-sealed.yaml
 
-# 3. Apply the SealedSecret. The in-cluster controller materializes a
-#    matching Secret automatically; the SealedSecret CR sticks around.
+# 3. Apply the SealedSecret. The controller creates the matching Secret.
 kubectl apply -f example-sealed.yaml
 kubectl get secret example -o yaml
 ```
 
-## Showcase-accepted limit: ephemeral controller key
+## The key is per cluster
 
-The sealed-secrets controller generates a fresh sealing key on first
-install and persists it as a `Secret` in `kube-system`. **That key is
-local to this kind cluster.** If `down.ps1` runs (which deletes the
-cluster), the next `up.ps1` brings up a NEW controller with a NEW
-key, and any SealedSecret YAML committed against the old key will no
-longer decrypt — the controller will log
-`Decryption error: no key could decrypt secret`.
+The controller generates its sealing key on first start and stores it as a Secret in `kube-system`. That key exists only in this kind cluster. After `make down` and `make up`, a new controller generates a new key, and anything sealed against the old one no longer decrypts; the controller logs `no key could decrypt secret`.
 
-For this showcase that's intentional and accepted:
+To keep sealed values across rebuilds, back the key up before deleting the cluster and restore it before the controller starts:
 
-- an earlier iteration's SealedSecret only protects stub values (`demo-not-real`,
-  `example.invalid` — see `manifests/buyerchat/10-secret-stub.yaml`).
-  Re-sealing them after a cluster recreate is a 30-second `kubeseal`
-  re-run, not a recovery operation.
-- Production deployments would back up the controller's sealing key
-  via:
-  ```sh
-  kubectl get secret -n kube-system \
-    -l sealedsecrets.bitnami.com/sealed-secrets-key \
-    -o yaml \
-    > .secrets/sealed-secrets-key.yaml   # NEVER committed
-  ```
-  …and restore it before the new controller comes up:
-  ```sh
-  kubectl apply -f .secrets/sealed-secrets-key.yaml
-  kubectl rollout restart deploy/sealed-secrets -n kube-system
-  ```
-- cleanup ticket logs this; it's not a task because the
-  showcase has no real secrets to lose.
+```sh
+kubectl get secret -n kube-system \
+  -l sealedsecrets.bitnami.com/sealed-secrets-key -o yaml \
+  > sealed-secrets-key.yaml        # keep this out of git
 
-## cleanup
-
-When ArgoCD takes over (Day 6+), this controller install becomes an
-Argo `Application` pointing at a kustomization that wraps the chart.
-The `helm install` command above gets retired.
+kubectl apply -f sealed-secrets-key.yaml
+kubectl rollout restart deployment/sealed-secrets-controller -n kube-system
+```

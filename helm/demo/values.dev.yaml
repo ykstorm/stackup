@@ -3,10 +3,18 @@
 # Renders an Argo Rollout (canary) instead of a plain Deployment so the
 # documented canary flow — `kubectl argo rollouts get rollout demo -n app`
 # — works end to end. Two replicas keep the canary weight steps visible.
+# Turns on the NetworkPolicies (Calico enforces them) and the Ingress at
+# https://demo.localtest.me.
 
 replicaCount: 2
 
 rollout:
+  enabled: true
+
+networkPolicy:
+  enabled: true
+
+ingress:
   enabled: true
 
 resources:

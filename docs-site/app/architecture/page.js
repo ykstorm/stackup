@@ -7,44 +7,53 @@ export default function Architecture() {
     <>
       <h1>Architecture</h1>
       <p className="lede">
-        Cluster topology, the GitOps tree, the observability flow, and the
-        security posture — all of it reproducible from <code>make up</code>.
+        The node, the GitOps tree, the metrics path, and the security
+        settings, as <code>make up</code> builds them.
       </p>
 
-      <h2>Cluster topology</h2>
+      <h2>The cluster</h2>
       <p>
-        kind launches the cluster as Docker containers, each node running
-        containerd and kubelet. Pods run inside the worker nodes as
-        containers-within-containers. The cluster declares{' '}
-        <code>disableDefaultCNI: true</code> and installs Calico, which enforces
-        ingress and egress NetworkPolicy rules in full. The whole thing fits in
-        roughly 3 GB of RAM.
+        <code>kind/cluster.yaml</code> defines one node: a control-plane node
+        that also runs every workload. The node is a Docker container running
+        containerd and the kubelet, so pods are containers inside that
+        container. The cluster sets <code>disableDefaultCNI: true</code> and
+        installs Calico, which enforces both the ingress and the egress half of
+        a NetworkPolicy. The node publishes ports 80 and 443 to the host, where
+        ingress-nginx binds them. The stack needs about 6 GB of memory for
+        Docker.
       </p>
 
-      <h2>GitOps tree (app-of-apps)</h2>
+      <h2>The GitOps tree</h2>
       <p>
-        A single root ArgoCD Application is the only thing <code>make up</code>{' '}
-        applies. It manages six child applications, and ArgoCD syncs each of
-        them from the git repo:
+        <code>make up</code> installs only kind, Calico, the <code>app</code>{' '}
+        namespace and ArgoCD, loads the demo image onto the node, and applies
+        one root ArgoCD Application. The root renders{' '}
+        <code>argocd/apps/</code>, a small Helm chart that defines six child
+        applications, and ArgoCD installs them in three sync waves:
       </p>
       <ul>
-        <li>cert-manager — TLS issuance</li>
-        <li>ingress-nginx — ingress and TLS termination</li>
-        <li>sealed-secrets — in-cluster secret decryption</li>
-        <li>kube-prometheus-stack — Prometheus, Alertmanager, Grafana</li>
-        <li>argo-rollouts — the canary controller</li>
-        <li>buyerchat — the demo workload</li>
+        <li>wave 0, cert-manager: certificates for each Ingress</li>
+        <li>wave 0, ingress-nginx: the ingress controller</li>
+        <li>wave 1, kube-prometheus-stack: Prometheus and Grafana</li>
+        <li>wave 1, argo-rollouts: the canary controller</li>
+        <li>wave 1, sealed-secrets: decrypts SealedSecret resources</li>
+        <li>wave 2, demo: the canary subject, from the chart in helm/demo</li>
       </ul>
       <p>
-        The discipline is that state lives in git, not in ad-hoc{' '}
-        <code>kubectl apply</code> commands. ArgoCD runs automated sync, prune,
-        and self-heal against what the repo declares.
+        Each wave waits for the previous one to be Healthy, so the demo finds
+        the Rollout and ServiceMonitor CRDs it needs. Each child syncs
+        automatically with prune and self-heal turned on, and applies
+        server-side, because several of the charts ship CRDs too large for a
+        client-side apply. State lives in git rather than in{' '}
+        <code>kubectl apply</code> commands.
       </p>
 
-      <h2>Observability flow</h2>
+      <h2>Metrics</h2>
       <p>
-        kube-prometheus-stack installs Prometheus, Alertmanager, and Grafana.
-        Metrics flow into Prometheus and render as RED dashboards in Grafana:
+        The demo app counts every response in{' '}
+        <code>http_requests_total</code>, labelled by service, method, path and
+        status code. kube-prometheus-stack scrapes it through the chart&apos;s
+        ServiceMonitor:
       </p>
       <table>
         <thead>
@@ -57,65 +66,69 @@ export default function Architecture() {
         <tbody>
           <tr>
             <td>Metrics</td>
-            <td>/api/metrics scraped every 30s</td>
+            <td>
+              <code>/metrics</code>, scraped every 30s
+            </td>
             <td>Prometheus</td>
           </tr>
         </tbody>
       </table>
-
-      <h3>Roadmap</h3>
       <p>
-        Logs and traces (Loki + Promtail, Tempo) are on the roadmap — not
-        installed yet. Once they are wired in, a Grafana panel would let you
-        drill from a metric into the matching logs, and from a log line jump to
-        the trace by its trace_id.
+        Grafana reads from that Prometheus. There is no alerting and no log or
+        trace pipeline: the stack collects metrics only.
       </p>
 
-      <h2>Security posture</h2>
+      <h2>Security settings</h2>
       <table>
         <thead>
           <tr>
-            <th>Layer</th>
-            <th>Control</th>
+            <th>Area</th>
+            <th>Setting</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td>Pod admission</td>
             <td>
-              Pod Security Standards <code>restricted</code> on workload
-              namespaces
+              The <code>app</code> namespace enforces the{' '}
+              <code>restricted</code> Pod Security profile
+            </td>
+          </tr>
+          <tr>
+            <td>Pods</td>
+            <td>
+              Non-root UID, read-only root filesystem, no capabilities, no
+              service account token
             </td>
           </tr>
           <tr>
             <td>Network</td>
             <td>
-              NetworkPolicy <code>default-deny</code>, explicit allow rules per
-              service
+              Calico enforces NetworkPolicy in both directions. In{' '}
+              <code>app</code>, everything is denied by default except DNS,
+              in-namespace calls to the demo, and ingress-nginx and Prometheus
+              connecting to it
             </td>
           </tr>
           <tr>
             <td>Secrets</td>
-            <td>Sealed Secrets — encrypted in git, decrypted in-cluster</td>
+            <td>Sealed Secrets controller with a per-cluster key</td>
           </tr>
           <tr>
             <td>TLS</td>
-            <td>cert-manager self-signed CA (swap to ACME for production)</td>
-          </tr>
-          <tr>
-            <td>RBAC</td>
-            <td>No cluster-admin bindings on workload namespaces</td>
+            <td>cert-manager with a self-signed ClusterIssuer</td>
           </tr>
         </tbody>
       </table>
 
-      <h2>What changes for production</h2>
+      <h2>Moving off kind</h2>
       <p>
-        Taking the stack to EKS, GKE, or AKS means swapping kind for a managed
-        control plane, the self-signed issuer for ACME via DNS-01, hostPort
-        ingress for a real LoadBalancer, local volumes for a CSI driver,
-        single-replica components for HA, and loosening nothing on the RBAC
-        side.
+        On a managed cluster the main changes are a multi-node control plane, a
+        LoadBalancer Service for ingress-nginx instead of hostPort, an ACME
+        issuer instead of the self-signed one, persistent volumes for
+        Prometheus and Grafana, a backup of the Sealed Secrets key, and a
+        traffic router so canary weights are exact shares of traffic rather
+        than pod counts.
       </p>
     </>
   );

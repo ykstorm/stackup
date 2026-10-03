@@ -1,23 +1,24 @@
+import Link from 'next/link';
 import './globals.css';
 
 export const metadata = {
   title: 'Stackup Docs',
   description:
-    'Production-shaped Kubernetes on a laptop: ArgoCD app-of-apps, Argo Rollouts canary, kube-prometheus-stack, all from make up.',
+    'One-command Kubernetes on a laptop: kind, an ArgoCD app-of-apps, and an Argo Rollouts canary gated on a Prometheus success rate.',
 };
 
 function Header() {
   return (
     <header className="site-header">
       <div className="inner">
-        <a className="brand" href="/">
+        <Link className="brand" href="/">
           Stackup
-        </a>
+        </Link>
         <nav className="nav">
-          <a href="/">Overview</a>
-          <a href="/getting-started/">Getting Started</a>
-          <a href="/architecture/">Architecture</a>
-          <a href="/gitops-canary/">GitOps &amp; Canary</a>
+          <Link href="/">Overview</Link>
+          <Link href="/getting-started/">Getting Started</Link>
+          <Link href="/architecture/">Architecture</Link>
+          <Link href="/gitops-canary/">GitOps &amp; Canary</Link>
           <a href="https://github.com/ykstorm/stackup">GitHub</a>
         </nav>
       </div>
@@ -32,7 +33,7 @@ export default function RootLayout({ children }) {
         <Header />
         <main>{children}</main>
         <footer>
-          Stackup — Apache License 2.0. Built with Next.js static export.{' '}
+          Stackup is licensed under the Apache License 2.0.{' '}
           <a href="https://github.com/ykstorm/stackup">Source on GitHub</a>.
         </footer>
       </body>

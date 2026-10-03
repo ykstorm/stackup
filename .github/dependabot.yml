@@ -7,8 +7,16 @@ updates:
     labels:
       - "dependencies"
 
+  # The two wrapper charts pin their upstream chart in Chart.yaml.
   - package-ecosystem: "helm"
-    directory: "/helm/buyerchat"
+    directory: "/infra/argocd"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+
+  - package-ecosystem: "helm"
+    directory: "/infra/argo-rollouts"
     schedule:
       interval: "weekly"
     labels:

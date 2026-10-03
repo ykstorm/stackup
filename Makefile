@@ -1,61 +1,70 @@
-.PHONY: up down smoke lint rollout-status demo-image help
+# Stackup. Run make from Linux, macOS, WSL or Git Bash (README, "Windows
+# and WSL"). Each target calls a script in scripts/, so everything also works
+# without make: ./setup.sh does what `make up` does.
+
+# GNU make for Windows started from PowerShell or cmd has no bash to hand the
+# recipes to. Git Bash sets MSYSTEM; WSL does not set OS at all.
+ifeq ($(OS),Windows_NT)
+ifndef MSYSTEM
+$(error Run make from WSL or Git Bash, not from PowerShell or cmd. See "Windows and WSL" in README.md)
+endif
+endif
+
+# The recipes need bash, and make's default shell is /bin/sh, which is dash on
+# Ubuntu and WSL. A make built for Windows (MAKE_HOST Windows32) cannot start
+# /bin/bash by that path, so it keeps its own default; the recipes call bash
+# by name either way.
+ifneq ($(MAKE_HOST),Windows32)
+SHELL := /bin/bash
+.SHELLFLAGS := -eu -o pipefail -c
+endif
 
 KIND_CLUSTER := stackup
-HELM_CHART := helm/demo
 NAMESPACE := app
-DEMO_IMAGE := stackup-demo:v1
 ROLLOUT := demo
+DEMO_IMAGE ?= stackup-demo:v1
+
+.PHONY: help up preflight down lint smoke port-forward demo-image rollout-status rollout-ui
 
 help:
-	@echo "stackup Makefile"
+	@echo "Stackup"
 	@echo ""
-	@echo "  make up             Full bring-up: scripts/bootstrap.sh (ordered, each step waited)"
-	@echo "  make down           Tear down: delete kind cluster (clean)"
-	@echo "  make demo-image     Build the demo workload image + side-load it into kind"
-	@echo "  make smoke          Run smoke tests (helm render + validate; no cluster needed)"
-	@echo "  make lint           Lint all YAML files + Helm charts"
-	@echo "  make rollout-status Watch the demo Argo Rollout canary progress"
-	@echo ""
-	@echo "Prerequisites: docker, kind, helm >=3.15, kubectl, git, bash"
+	@echo "  make up             Check the prerequisites, then create the cluster and install everything (./setup.sh)"
+	@echo "  make preflight      Only check the prerequisites"
+	@echo "  make smoke          Check the running cluster: pods, ArgoCD apps, ArgoCD, Grafana, Prometheus, demo"
+	@echo "  make port-forward   Reach ArgoCD, Grafana, Prometheus and the demo on localhost ports"
+	@echo "  make rollout-status Watch the demo Rollout in the terminal"
+	@echo "  make rollout-ui     Argo Rollouts dashboard on http://localhost:3100/rollouts"
+	@echo "  make demo-image     Build the demo image and load it into kind (DEMO_IMAGE=stackup-demo:v2)"
+	@echo "  make lint           Static checks of the repository, no cluster needed"
+	@echo "  make down           Delete the kind cluster"
 
-# `up` is a thin wrapper over scripts/bootstrap.sh. The script owns the
-# ordering + per-step `kubectl wait` gates (kind -> Calico -> namespace ->
-# sealed-secrets -> SealedSecrets -> ingress/cert-manager/prometheus ->
-# Argo Rollouts/ArgoCD -> demo workload -> app-of-apps). Keeping the
-# orchestration in one place (not split between this target and the
-# script) is why the target is a one-liner.
 up:
-	@bash scripts/bootstrap.sh
+	@bash setup.sh
 
-# Build + side-load the demo image without a full bring-up. Handy when
-# iterating on the workload, or to stage a "bad" image for the rollback
-# demo: make demo-image DEMO_IMAGE=stackup-demo:v2 then rebuild with
-# --build-arg FAILURE_RATE=0.3 (see apps/demo/Dockerfile).
+preflight:
+	@bash scripts/preflight.sh
+
+down:
+	kind delete cluster --name $(KIND_CLUSTER)
+
+lint:
+	@bash scripts/lint.sh
+
+smoke:
+	@bash scripts/smoke.sh
+
+port-forward:
+	@bash scripts/port-forward.sh
+
 demo-image:
 	docker build -t $(DEMO_IMAGE) apps/demo
 	kind load docker-image $(DEMO_IMAGE) --name $(KIND_CLUSTER)
 
-down:
-	@echo "=== Deleting kind cluster ==="
-	kind delete cluster --name $(KIND_CLUSTER)
-	@echo "Cluster deleted. Run 'make up' to bring it back up."
-
-smoke:
-	@echo "=== Running smoke tests ==="
-	@bash scripts/smoke-test.sh
-
-lint:
-	@echo "=== Linting YAML files ==="
-	@find . -name "*.yaml" -o -name "*.yml" | grep -v node_modules | while read f; do \
-		python3 -c "import yaml; yaml.safe_load(open('$$f'))" 2>/dev/null && echo "✓ $$f" || echo "✗ $$f: YAML parse error"; \
-	done || true
-
-	@echo ""
-	@echo "=== Helm lint ==="
-	@for chart in helm/demo helm/buyerchat; do \
-		helm lint $$chart --quiet && echo "✓ helm lint $$chart passed" || echo "✗ helm lint $$chart failed"; \
-		helm template $$(basename $$chart) $$chart > /dev/null 2>&1 && echo "✓ helm template $$chart passed" || echo "✗ helm template $$chart failed"; \
-	done
-
 rollout-status:
 	kubectl argo rollouts get rollout $(ROLLOUT) -n $(NAMESPACE) --watch
+
+# Served by the kubectl plugin on this machine; it reads Rollouts through the
+# current kubeconfig context and runs nothing in the cluster. Ctrl-C stops it.
+rollout-ui:
+	kubectl argo rollouts dashboard -n $(NAMESPACE)

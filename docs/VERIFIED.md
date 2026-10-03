@@ -1,14 +1,18 @@
 # Live verification — stackup
 
+This page records one run, on 2026-06-24, of the bootstrap as it was then: it installed the platform charts with `helm` and handed them to ArgoCD afterwards. The bootstrap has changed since. It now installs only kind, Calico and ArgoCD, applies the CRDs server-side, and lets ArgoCD install every other component in sync waves. No run of the current version is recorded on this page.
+
 **Date:** 2026-06-24
 **Host:** Windows 11 + Docker Desktop (kind v1.35.0 node, 12 vCPU, ~3.7 GB RAM allocated to the Linux engine)
 **Scope:** full `make up` bring-up on a clean cluster, then the Argo Rollouts canary end to end.
 
 This is the live counterpart to CI (`ci.yml`), which only static-validates
-manifests (`kubeconform -strict`, `helm lint`, `helm template`). CI does **not**
-stand up a cluster, so the canary below had never been exercised before this run.
+manifests (`kubeconform -strict`, `helm lint`, `helm template`). At the time CI
+did not stand up a cluster, so the canary below had never been exercised before
+this run. (Since 2026-07-05, `.github/workflows/canary-e2e.yml` also runs the
+canary on a kind cluster in CI.)
 
-## Result: the canary works end to end ✅
+## Result: ok, the canary works end to end
 
 A `make down && make up` on a clean kind cluster brought up every platform
 component, and the demo Argo Rollouts canary completed a full progressive
@@ -39,7 +43,7 @@ step 2  analysis RUNNING   → AnalysisRun queries the operated Prometheus 3× (
 step 4  analysis Successful → setWeight 50%
 step 5  setWeight 75%
 step 6  pause
-step 8  Healthy ✓           → canary complete, stable promoted, 2/2 Available
+step 8  Healthy ok          → canary complete, stable promoted, 2/2 Available
 ```
 
 The AnalysisRun (`demo-…-2-2`) ran the real success-rate query
@@ -67,7 +71,7 @@ the README's "three times over 90 seconds") and rendering it into the
 AnalysisTemplate. After the fix the Rollout went `Progressing` → `Healthy` as
 captured above.
 
-## Honest environment notes (not code defects)
+## Environment notes (not code defects)
 
 - **Slow image pulls + 3.7 GB RAM** made a single-shot `make up` flaky on this
   host: `cert-manager-webhook` and the kube-prometheus-stack pods sat in

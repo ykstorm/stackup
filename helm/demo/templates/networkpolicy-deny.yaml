@@ -1,0 +1,17 @@
+{{- if .Values.networkPolicy.enabled }}
+# Default deny for the namespace the chart is installed in. The empty
+# podSelector selects every pod there, so any ingress or egress that the two
+# allow policies do not permit is dropped. Calico enforces both directions
+# (kind/calico/README.md).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "demo.fullname" . }}-default-deny
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+{{- end }}

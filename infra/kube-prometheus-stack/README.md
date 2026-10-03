@@ -1,10 +1,10 @@
-# kube-prometheus-stack (P3 Day 4)
+# kube-prometheus-stack
 
-The Prometheus + Grafana + kube-state-metrics + node-exporter +
-prometheus-operator stack for the showcase. One Helm release, one
-namespace (`monitoring`).
+Prometheus, Grafana, kube-state-metrics, node-exporter and the Prometheus operator, as one Helm release (`kps`) in the `monitoring` namespace. The `kube-prometheus-stack` Application in `argocd/apps/templates/kube-prometheus-stack.yaml` installs it with the pinned chart and this values file, in sync wave 1 and with server-side apply, since the operator's CRDs are larger than a client-side apply can store.
 
-## Install
+## Install by hand
+
+On a cluster without ArgoCD:
 
 ```sh
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
@@ -12,111 +12,54 @@ helm repo update prometheus-community
 
 helm upgrade --install kps prometheus-community/kube-prometheus-stack \
   --namespace monitoring --create-namespace \
+  --version 84.5.0 \
   -f infra/kube-prometheus-stack/values.yaml \
   --wait --timeout 10m
 ```
 
-Pinned to the chart version on the Helm repo at install time
-(`84.5.0` / app `v0.90.1` at the time of writing). The release name
-**`kps`** is load-bearing: ServiceMonitors authored elsewhere
-(notably `helm/buyerchat`'s ServiceMonitor in Phase C) carry
-`labels.release: kps` so the operator picks them up.
+The release name `kps` matters. The demo chart's ServiceMonitor carries `release: kps`, the Grafana Service is `kps-grafana`, and the ArgoCD Application sets `releaseName: kps`.
 
 ## Access
 
-| URL | Service |
+| Where | What |
 |---|---|
-| https://grafana.localtest.me | Grafana — login `admin` / `prom-operator` |
-| `kubectl port-forward -n monitoring svc/kps-kube-prometheus-stack-prometheus 9090:9090` | Prometheus UI / `/targets` |
+| https://grafana.localtest.me | Grafana. Log in as `admin` / `prom-operator`. |
+| `make port-forward`, then http://localhost:3000 | Grafana through `svc/kps-grafana` port 80 |
+| `make port-forward`, then http://localhost:9090 | The Prometheus UI (`svc/prometheus-operated` port 9090), including `/targets` |
 
-### Why `prom-operator` is acceptable here
+`prom-operator` is the chart's well-known default password. It is acceptable on a local cluster that holds no real data. Anything shared should set `grafana.admin.existingSecret` to a Secret instead, for example one decrypted by Sealed Secrets.
 
-It's the chart's own well-known default. This is a showcase cluster
-with no real data; the trade-off is "anyone with kubectl can read it
-anyway, so signaling provenance is more useful than rotating it."
-Production would set `grafana.adminPassword: ""` and inject via
-`grafana.admin.existingSecret` pointing at a SealedSecret-decrypted
-Secret.
+## Selector override
 
-## Critical override: `serviceMonitorSelectorNilUsesHelmValues=false`
+By default the operator only adopts ServiceMonitor, PodMonitor, PrometheusRule and Probe objects that carry the chart's own release label. `values.yaml` sets the four `*SelectorNilUsesHelmValues` toggles to `false`, so the operator adopts matching objects from any release in any namespace, including the demo chart's ServiceMonitor.
 
-By default the operator only adopts ServiceMonitor / PodMonitor /
-PrometheusRule / Probe objects that carry the chart's release label
-(`release=kps`). When set to `false` (in `values.yaml`) the selector
-becomes "any matching object cluster-wide" — necessary for the
-buyerchat chart's ServiceMonitor (Phase C) to be picked up without
-having to copy the magic label.
+## Storage
 
-The four `*SelectorNilUsesHelmValues: false` toggles in `values.yaml`
-all share this rationale.
+Prometheus and Grafana use `emptyDir` volumes. A pod restart or `make down` loses every metric and any change made in the Grafana UI. Dashboards come back on their own, because Grafana loads them from ConfigMaps labelled `grafana_dashboard: "1"` rather than from its own database. The demo chart ships one of these: the canary dashboard (`helm/demo/dashboards/canary.json`, uid `stackup-canary`). A long-lived install would add `prometheus.prometheusSpec.storageSpec` and `grafana.persistence` backed by a StorageClass.
 
-## Storage trade-off (showcase: emptyDir)
+The default scrape interval is 30 seconds; a ServiceMonitor can override it.
 
-Both Prometheus and Grafana use **emptyDir** volumes. Data lives in
-the pod's tmpfs; on `down.ps1 + up.ps1` (or any pod restart) every
-metric and every imported dashboard is gone. Re-import takes ~5
-seconds because dashboards are sourced from in-tree ConfigMaps
-labeled `grafana_dashboard: "1"`, not from Grafana's SQLite store.
+## Four control-plane targets show as down on kind
 
-Production would attach a PVC (`prometheus.prometheusSpec.storageSpec`
-+ `grafana.persistence.enabled=true`) backed by a real
-StorageClass. For a $0-cost local kind cluster the laptop's host-path
-PV provisioner exists but adds noise without value; losing 24h of
-demo metrics on a recycle is fine.
-
-## Default scrape config
-
-`scrapeInterval: 30s` for everything that doesn't override on the
-ServiceMonitor itself. Cheap on a kind cluster, plenty of resolution
-for a showcase.
-
-## Kind-specific quirk: 4 control-plane targets show `down`
-
-After install, `/api/v1/targets` lists 12 up / 4 down:
+After install, Prometheus reports these targets as down:
 
 ```
-kube-controller-manager   down
-kube-etcd                 down
-kube-proxy                down
-kube-scheduler            down
+kube-controller-manager
+kube-etcd
+kube-proxy
+kube-scheduler
 ```
 
-These are kind-specific. The chart's bundled ServiceMonitors expect
-control-plane components on standard ports (`10257`, `2381`,
-`10249`, `10259`); kind runs them as static pods bound to localhost
-only, and `--bind-address` is hard to flip after `kind create`. The
-12 healthy targets cover the showcase demo surface
-(kube-state-metrics, node-exporter, Grafana, the operator,
-Prometheus self-scrape, kubelet, coredns, apiserver). Not fixing on
-this sprint — would require a kind cluster patch + redeploy that
-buys nothing for the demo.
-
-The chart-bundled `kubeControllerManager.enabled` / `kubeEtcd` /
-`kubeProxy` / `kubeScheduler` toggles can be set to `false` to drop
-these targets from the UI; on this showcase we keep them visible to
-make the kind quirk obvious to a recruiter reading the dashboards.
+kind runs these components bound to localhost, so the chart's ServiceMonitors cannot reach them on their standard ports (10257, 2381, 10249, 10259). Every other target (kubelet, API server, CoreDNS, kube-state-metrics, node-exporter, Grafana, the operator, and Prometheus itself) is up. Setting `kubeControllerManager.enabled`, `kubeEtcd.enabled`, `kubeProxy.enabled` and `kubeScheduler.enabled` to `false` would remove them; they are left on so the gap stays visible.
 
 ## Verify
 
 ```sh
-# All monitoring pods Running
-kubectl get pods -n monitoring
+kubectl get pods -n monitoring                      # all Running
+curl -k -i https://grafana.localtest.me             # expect a 302 to /login
+kubectl get certificate -n monitoring grafana-tls   # READY True
 
-# Grafana ingress reachable via TLS (self-signed)
-curl -k -i https://grafana.localtest.me     # expect 302 to /login
-
-# cert-manager issued the TLS Secret
-kubectl get certificate -n monitoring grafana-tls   # READY=True
-
-# Prometheus scrape targets
-kubectl port-forward -n monitoring svc/kps-kube-prometheus-stack-prometheus 9090:9090
+kubectl -n monitoring port-forward svc/prometheus-operated 9090:9090
 # in another shell:
 curl -s http://localhost:9090/api/v1/targets | jq '.data.activeTargets[] | {job: .labels.job, health}'
 ```
-
-## cleanup
-
-When ArgoCD takes over (Day 6+), this stack becomes an ArgoCD
-`Application` pointing at this same `infra/kube-prometheus-stack/`
-directory (via a chart-of-charts shim). The `helm install` command
-above gets retired in favor of `argocd app sync`.

@@ -1,114 +1,159 @@
+import Link from 'next/link';
+import CanaryFlow from './components/CanaryFlow';
+
+const GATE_QUERY =
+  'sum(rate(http_requests_total{service="demo", code=~"2.."}[2m])) / sum(rate(http_requests_total{service="demo"}[2m]))';
+
+const COMPONENTS = [
+  ['Cluster', 'kind', 'One Kubernetes node running as a Docker container'],
+  ['Network', 'Calico', 'Pod networking and NetworkPolicy enforcement in both directions'],
+  ['GitOps', 'ArgoCD', 'A root Application syncs six child Applications from this repository'],
+  ['Delivery', 'Argo Rollouts', "Runs the demo's canary steps and its analysis gate"],
+  ['Metrics', 'kube-prometheus-stack', 'Prometheus and Grafana'],
+  ['Ingress', 'ingress-nginx', 'Serves *.localtest.me on ports 80 and 443 of the host'],
+  ['TLS', 'cert-manager', 'Certificates from a self-signed ClusterIssuer'],
+  ['Secrets', 'Sealed Secrets', 'Decrypts SealedSecret resources inside the cluster'],
+  ['Pod security', 'Pod Security Admission', 'The app namespace enforces the restricted profile'],
+  ['Workload', 'demo (helm/demo)', 'Express service that counts every request in http_requests_total'],
+];
+
 export default function Home() {
   return (
     <>
-      <span className="tag">kind · ArgoCD · Argo Rollouts · Prometheus</span>
       <h1>Stackup</h1>
-      <p className="lede">
-        A production-shaped Kubernetes stack that runs on your laptop. One{' '}
-        <code>make up</code> brings up a kind cluster with GitOps, canary
-        delivery, and full observability — for free.
+      <p className="hero">
+        Stackup brings up a single-node Kubernetes cluster on a laptop with one command. kind runs the
+        cluster inside Docker, and ArgoCD keeps it in step with this repository. A small demo service
+        ships through an Argo Rollouts canary: each new version starts on a share of the pods while
+        Prometheus checks the service&apos;s HTTP success rate, and the rollout either continues to 100%
+        or rolls back on its own.
       </p>
 
-      <p>
-        Managed Kubernetes starts around $200/month on cloud providers. Stackup
-        runs the same control-plane patterns on kind, in Docker, on a single
-        machine. The buyerchat workload deliberately runs degraded with no
-        database. That is intentional: the cluster is the demo, not the app.
-      </p>
-
-      <h2>What it is</h2>
-      <p>
-        A kind-based cluster wired with a real ArgoCD app-of-apps over six child
-        applications, Argo Rollouts canary progressive delivery, the
-        kube-prometheus-stack for metrics (Prometheus, Alertmanager, Grafana),
-        cert-manager TLS, Sealed Secrets encrypted in git, and Calico
-        NetworkPolicy enforcement. Pod Security Standards <code>restricted</code>{' '}
-        applies on every workload namespace.
-      </p>
-
-      <h2>The components</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Layer</th>
-            <th>Component</th>
-            <th>Role</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Cluster</td>
-            <td>kind on Docker</td>
-            <td>Kubernetes nodes running in containers</td>
-          </tr>
-          <tr>
-            <td>CNI</td>
-            <td>Calico</td>
-            <td>NetworkPolicy enforcement (ingress + egress)</td>
-          </tr>
-          <tr>
-            <td>GitOps</td>
-            <td>ArgoCD app-of-apps</td>
-            <td>One root app manages six children; sync, prune, self-heal</td>
-          </tr>
-          <tr>
-            <td>Progressive delivery</td>
-            <td>Argo Rollouts</td>
-            <td>Canary 25 to 100% with an analysis gate and auto-rollback</td>
-          </tr>
-          <tr>
-            <td>Ingress</td>
-            <td>ingress-nginx</td>
-            <td>TLS termination over hostPort 80/443</td>
-          </tr>
-          <tr>
-            <td>TLS</td>
-            <td>cert-manager</td>
-            <td>Self-signed ClusterIssuer, swap to ACME for production</td>
-          </tr>
-          <tr>
-            <td>Secrets</td>
-            <td>Sealed Secrets</td>
-            <td>Encrypted in git, decrypted in-cluster</td>
-          </tr>
-          <tr>
-            <td>Metrics</td>
-            <td>kube-prometheus-stack</td>
-            <td>Prometheus, Alertmanager, Grafana with RED dashboards</td>
-          </tr>
-          <tr>
-            <td>Workload</td>
-            <td>buyerchat Helm chart</td>
-            <td>Next.js demo app that exercises the cluster</td>
-          </tr>
-        </tbody>
-      </table>
-      <p>
-        On the roadmap, not installed yet: logs (Loki + Promtail) and traces
-        (Tempo) for the full three-signal view in Grafana.
-      </p>
-
-      <h2>Start here</h2>
-      <div className="cards">
-        <div className="card">
-          <h3>
-            <a href="/getting-started/">Getting Started</a>
-          </h3>
-          <p>Clone, run make up, and reach the cluster in about ten minutes.</p>
+      <h2>Run it</h2>
+      <div className="run">
+        <div>
+          <pre>
+            <code>{`git clone https://github.com/ykstorm/stackup
+cd stackup
+make up        # or ./setup.sh`}</code>
+          </pre>
+          <p className="note">
+            <code>make up</code> checks the prerequisites, creates the cluster, installs Calico and ArgoCD, and
+            loads the demo image onto the node. ArgoCD then installs the rest from git in three sync waves, and
+            the script waits until every Application is healthy.
+          </p>
         </div>
-        <div className="card">
-          <h3>
-            <a href="/architecture/">Architecture</a>
-          </h3>
-          <p>Cluster topology, the GitOps tree, and the observability flow.</p>
-        </div>
-        <div className="card">
-          <h3>
-            <a href="/gitops-canary/">GitOps &amp; Canary</a>
-          </h3>
-          <p>How a commit becomes a canary rollout with a Prometheus gate.</p>
+        <div>
+          <h3>You need</h3>
+          <ul className="prereqs">
+            <li>Docker with at least 6 GB of memory</li>
+            <li>
+              <code>kind</code>, <code>kubectl</code>, and <code>helm</code> 3.15 or newer
+            </li>
+            <li>
+              the <code>kubectl-argo-rollouts</code> plugin
+            </li>
+            <li>
+              <code>git</code>, <code>bash</code> and <code>make</code> (on Windows, WSL, or Git Bash with{' '}
+              <code>./setup.sh</code>)
+            </li>
+            <li>ports 80 and 443 free on the host</li>
+            <li>
+              <code>make preflight</code> checks all of this
+            </li>
+          </ul>
         </div>
       </div>
+
+      <h2>How a change ships</h2>
+      <figure className="flow">
+        <div className="flow-scroll">
+          <CanaryFlow />
+        </div>
+        <figcaption>
+          The demo canary with the default values in <code>helm/demo</code>. The AnalysisRun computes{' '}
+          <code>{GATE_QUERY}</code>, the share of requests that returned a 2xx status across old and new
+          pods. One failed measurement is tolerated; a second aborts the update.
+        </figcaption>
+      </figure>
+
+      <h2>What you can open</h2>
+      <div className="opens">
+        <section className="open">
+          <h3>ArgoCD</h3>
+          <p className="addr">
+            <a href="https://argocd.localtest.me">argocd.localtest.me</a>
+          </p>
+          <p>
+            The root Application and its six children, with the sync and health of each. Log in as{' '}
+            <code>admin</code>; the password is in the <code>argocd-initial-admin-secret</code> Secret.
+          </p>
+        </section>
+        <section className="open">
+          <h3>Grafana</h3>
+          <p className="addr">
+            <a href="https://grafana.localtest.me/d/stackup-canary">grafana.localtest.me/d/stackup-canary</a>
+          </p>
+          <p>
+            The canary dashboard: the gate&apos;s success rate against the 0.95 line, requests by status code,
+            5xx responses by pod, and ready pods per ReplicaSet. Log in as <code>admin</code> /{' '}
+            <code>prom-operator</code>.
+          </p>
+        </section>
+        <section className="open">
+          <h3>The rollout</h3>
+          <p className="addr">
+            <code>make rollout-status</code>
+          </p>
+          <p>
+            The Rollout&apos;s steps, ReplicaSets and AnalysisRuns, updating in the terminal.{' '}
+            <code>make rollout-ui</code> serves the same view as a web page on{' '}
+            <code>localhost:3100/rollouts</code>.
+          </p>
+        </section>
+      </div>
+      <p className="note">
+        <code>localtest.me</code> resolves to <code>127.0.0.1</code>. The certificates are self-signed, so the
+        browser warns once per host.
+      </p>
+
+      <h2>What gets installed</h2>
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Layer</th>
+              <th>Component</th>
+              <th>What it does here</th>
+            </tr>
+          </thead>
+          <tbody>
+            {COMPONENTS.map(([layer, component, role]) => (
+              <tr key={layer}>
+                <td>{layer}</td>
+                <td>{component}</td>
+                <td>{role}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <h2>Read next</h2>
+      <ul className="next">
+        <li>
+          <Link href="/getting-started/">Getting started</Link>: prerequisites, <code>make up</code>, and
+          shipping a change.
+        </li>
+        <li>
+          <Link href="/architecture/">Architecture</Link>: the node, the namespaces, the GitOps tree and the
+          metrics path.
+        </li>
+        <li>
+          <Link href="/gitops-canary/">GitOps &amp; canary</Link>: the steps, the query, and what happens when
+          it fails.
+        </li>
+      </ul>
     </>
   );
 }

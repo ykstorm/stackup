@@ -1,0 +1,30 @@
+# Argo Rollouts: the controller that runs the demo's canary steps and its
+# analysis. From the wrapper chart in infra/argo-rollouts, which pins the
+# upstream chart; ArgoCD builds the dependency itself. Server-side apply
+# because the Rollout CRD is larger than the annotation a client-side apply
+# writes ("metadata.annotations: Too long").
+#
+# Wave 1 of the root; the demo in wave 2 needs its CRDs.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argo-rollouts
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: stackup
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ .Values.targetRevision }}
+    path: infra/argo-rollouts
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argo-rollouts
+  syncPolicy:
+    {{- include "stackup.syncPolicy" . | nindent 4 }}
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

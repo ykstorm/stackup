@@ -1,38 +1,10 @@
-# Contributing to Stackup
+# Contributing
 
-Thank you for your interest in contributing!
+1. Fork the repository and branch from `main`.
+2. Keep the change small and focused.
+3. Run `make lint` before opening a pull request. It needs no cluster, only `helm`, `kubeconform`, and `python3` with PyYAML; it also runs `shellcheck` when that is installed. CI runs the same script and treats a missing tool as a failure.
+4. Open a pull request that says what changed and why. CI must pass.
 
-## How to contribute
+For anything large, open an issue first to talk it through.
 
-1. **Fork the repo** and create a branch from `main`.
-2. **Make your changes** — keep them focused and small.
-3. **Run `make lint`** before opening a PR to catch YAML/Helm issues early.
-4. **Open a PR** — describe what changed and why.
-5. **CI must pass** — `make lint` + helm template validation.
-
-## What to contribute
-
-- Bug fixes with clear reproduction steps
-- Docs corrections (README, architecture, tradeoffs)
-- Additional smoke tests in `scripts/smoke-test.sh`
-- Improvements to Helm chart templates
-
-## What not to contribute yet
-
-- Changes to core platform components (ingress-nginx, cert-manager, etc.) unless a bug is confirmed
-- Multi-cluster or multi-tenant features — those are v1.x roadmap items
-- Changes to the buyerchat workload itself — it is intentionally degraded
-
-## Commit messages
-
-Use conventional commits:
-
-```
-feat: add Loki dashboards
-fix: correct ingress-nginx hostPort mapping
-docs: update quickstart timing
-```
-
-## Questions
-
-Open an issue for discussion before opening a large PR — saves everyone time.
+Commit messages follow Conventional Commits, for example `fix: correct the ingress-nginx hostPort mapping` or `docs: update the quickstart`.

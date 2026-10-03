@@ -1,0 +1,49 @@
+name: Set up Kubernetes tools
+description: >-
+  Installs pinned versions of helm and kubeconform, and optionally kind and
+  the kubectl-argo-rollouts plugin, into /usr/local/bin on a Linux runner.
+
+inputs:
+  helm-version:
+    description: helm release. v3.15.0 is the oldest version the README supports.
+    default: v3.15.0
+  kubeconform-version:
+    description: kubeconform release.
+    default: v0.6.7
+  kind-version:
+    description: kind release to install; empty keeps the runner's own (or none).
+    default: ""
+  rollouts-plugin-version:
+    description: >-
+      kubectl-argo-rollouts release to install; empty skips it. Keep it equal
+      to the appVersion in infra/argo-rollouts/Chart.yaml.
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install pinned tools
+      shell: bash
+      env:
+        HELM_VERSION: ${{ inputs.helm-version }}
+        KUBECONFORM_VERSION: ${{ inputs.kubeconform-version }}
+        KIND_VERSION: ${{ inputs.kind-version }}
+        ROLLOUTS_VERSION: ${{ inputs.rollouts-plugin-version }}
+      run: |
+        set -euo pipefail
+        tmp="$(mktemp -d)"
+        curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" | tar -xz -C "$tmp"
+        sudo install -m 0755 "$tmp/linux-amd64/helm" /usr/local/bin/helm
+        curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" | tar -xz -C "$tmp"
+        sudo install -m 0755 "$tmp/kubeconform" /usr/local/bin/kubeconform
+        if [ -n "$KIND_VERSION" ]; then
+          curl -fsSLo "$tmp/kind" "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
+          sudo install -m 0755 "$tmp/kind" /usr/local/bin/kind
+        fi
+        if [ -n "$ROLLOUTS_VERSION" ]; then
+          curl -fsSLo "$tmp/kubectl-argo-rollouts" "https://github.com/argoproj/argo-rollouts/releases/download/${ROLLOUTS_VERSION}/kubectl-argo-rollouts-linux-amd64"
+          sudo install -m 0755 "$tmp/kubectl-argo-rollouts" /usr/local/bin/kubectl-argo-rollouts
+        fi
+        rm -rf "$tmp"
+        helm version --short
+        kubeconform -v

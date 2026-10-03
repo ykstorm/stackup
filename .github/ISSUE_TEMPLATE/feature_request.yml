@@ -1,27 +1,21 @@
 name: Feature request
-description: Propose a new feature or improvement
-title: "[Feature] "
+description: Suggest a change or an addition.
 labels: [enhancement]
 body:
-  - type: markdown
+  - type: textarea
+    id: problem
     attributes:
-      value: |
-        ## Feature description
-
-        Clear and concise description of the feature.
-
-        ## Why this is needed
-
-        What problem does it solve?
-
-        ## Proposed solution
-
-        How should it work?
-
-        ## Alternatives considered
-
-        What else did you consider?
-
-        ## Additional context
-
-        Any other relevant context (screenshots, links, etc.)
+      label: The problem
+      description: What you are trying to do and what gets in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would change
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
