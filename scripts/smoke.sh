@@ -15,7 +15,7 @@
 # of the repository are `make lint`.
 set -uo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 # shellcheck source=scripts/lib.sh
 . scripts/lib.sh
 

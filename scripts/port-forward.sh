@@ -9,7 +9,7 @@
 # listens on 80, prometheus-operated on 9090 and demo on 3000.
 set -euo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 # shellcheck source=scripts/lib.sh
 . scripts/lib.sh
 

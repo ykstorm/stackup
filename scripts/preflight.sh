@@ -6,7 +6,7 @@
 # met. ./setup.sh (make up) runs it first; make preflight runs only this.
 set -uo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 
 CLUSTER_NAME=stackup
 KIND_VERSION=v0.31.0

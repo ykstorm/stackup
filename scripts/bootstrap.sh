@@ -21,7 +21,7 @@
 #   STACKUP_APPS_TIMEOUT  seconds to wait for the Applications (default: 1200)
 set -euo pipefail
 
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 # shellcheck source=scripts/lib.sh
 . scripts/lib.sh
 
