@@ -93,6 +93,25 @@ service:
   type: ClusterIP
   port: 3000
 
+# NetworkPolicies for the namespace the chart is installed in: a default deny,
+# DNS and in-namespace egress, and ingress to the demo pods from ingress-nginx,
+# the namespace itself and, with the ServiceMonitor, Prometheus. Off by
+# default; values.dev.yaml turns them on for the kind cluster, where Calico
+# enforces them.
+networkPolicy:
+  enabled: false
+  ingressNamespace: ingress-nginx
+  monitoringNamespace: monitoring
+
+# https://demo.localtest.me through ingress-nginx, with a certificate from
+# cert-manager. Off by default; on in values.dev.yaml.
+ingress:
+  enabled: false
+  className: nginx
+  host: demo.localtest.me
+  clusterIssuer: selfsigned
+  tlsSecretName: demo-tls
+
 # ServiceMonitor for kube-prometheus-stack to scrape /metrics. The
 # operator (release `kps`) sets serviceMonitorSelectorNilUsesHelmValues
 # =false so it adopts ServiceMonitors cluster-wide; the release label is

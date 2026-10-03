@@ -8,8 +8,9 @@ description: |-
 
   Renders exactly one workload object: a plain Deployment by default, or
   an Argo Rollout (canary + AnalysisTemplate) when rollout.enabled=true
-  (set in values.dev.yaml for the kind cluster). Also ships a Service and
-  a ServiceMonitor so kube-prometheus-stack scrapes /metrics.
+  (set in values.dev.yaml for the kind cluster). Also ships a Service, a
+  ServiceMonitor so kube-prometheus-stack scrapes /metrics, and the Grafana
+  canary dashboard; values.dev.yaml adds NetworkPolicies and an Ingress.
 type: application
 version: 0.1.0
 appVersion: "v1"

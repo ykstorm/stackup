@@ -27,6 +27,15 @@ rollout:
 serviceMonitor:
   enabled: false
 
+# The CI cluster has no ingress controller or cert-manager, and its bare
+# Prometheus is not one of the sources the NetworkPolicies allow, so both are
+# turned off again here.
+networkPolicy:
+  enabled: false
+
+ingress:
+  enabled: false
+
 resources:
   requests:
     cpu: "25m"

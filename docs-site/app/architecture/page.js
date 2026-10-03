@@ -97,7 +97,12 @@ export default function Architecture() {
           </tr>
           <tr>
             <td>Network</td>
-            <td>Calico enforces NetworkPolicy in both directions</td>
+            <td>
+              Calico enforces NetworkPolicy in both directions. In{' '}
+              <code>app</code>, everything is denied by default except DNS,
+              in-namespace calls to the demo, and ingress-nginx and Prometheus
+              connecting to it
+            </td>
           </tr>
           <tr>
             <td>Secrets</td>

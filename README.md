@@ -52,10 +52,9 @@ Hostnames under `localtest.me` resolve to `127.0.0.1`, so there is nothing to ad
   kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
   ```
 - The rollout, in the terminal: `make rollout-status`. In a browser: `make rollout-ui`, which serves the Argo Rollouts dashboard on [http://localhost:3100/rollouts](http://localhost:3100/rollouts) from your machine.
-- The demo itself has no ingress yet. Port-forward to it:
+- The demo: [https://demo.localtest.me](https://demo.localtest.me). Its `/metrics` path shows `http_requests_total`:
   ```bash
-  kubectl -n app port-forward svc/demo 3000:3000
-  curl localhost:3000/metrics   # includes http_requests_total
+  curl -k https://demo.localtest.me/metrics
   ```
 
 ## Ship a change through the canary

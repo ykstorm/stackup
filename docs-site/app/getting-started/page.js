@@ -71,9 +71,8 @@ make up`}</code>
           dashboard on <code>http://localhost:3100/rollouts</code>.
         </li>
         <li>
-          The <code>demo</code> service has no ingress yet. Reach it with{' '}
-          <code>kubectl -n app port-forward svc/demo 3000:3000</code>, then{' '}
-          <code>curl localhost:3000/metrics</code> to see{' '}
+          <strong>https://demo.localtest.me</strong>: the demo service.{' '}
+          <code>curl -k https://demo.localtest.me/metrics</code> shows{' '}
           <code>http_requests_total</code>.
         </li>
       </ul>
