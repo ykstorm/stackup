@@ -35,12 +35,12 @@ export default function Home() {
           <pre>
             <code>{`git clone https://github.com/ykstorm/stackup
 cd stackup
-make up`}</code>
+make up        # or ./setup.sh`}</code>
           </pre>
           <p className="note">
-            <code>make up</code> runs <code>scripts/bootstrap.sh</code>. It creates the cluster, installs each
-            component in order and waits for it, loads the demo image into kind, and then hands the cluster
-            to ArgoCD.
+            <code>make up</code> checks the prerequisites, creates the cluster, installs Calico and ArgoCD, and
+            loads the demo image onto the node. ArgoCD then installs the rest from git in three sync waves, and
+            the script waits until every Application is healthy.
           </p>
         </div>
         <div>
@@ -54,9 +54,13 @@ make up`}</code>
               the <code>kubectl-argo-rollouts</code> plugin
             </li>
             <li>
-              <code>git</code>, <code>bash</code> and <code>make</code> (on Windows, Git Bash or WSL)
+              <code>git</code>, <code>bash</code> and <code>make</code> (on Windows, WSL, or Git Bash with{' '}
+              <code>./setup.sh</code>)
             </li>
             <li>ports 80 and 443 free on the host</li>
+            <li>
+              <code>make preflight</code> checks all of this
+            </li>
           </ul>
         </div>
       </div>

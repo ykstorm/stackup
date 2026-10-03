@@ -1,0 +1,43 @@
+# cert-manager, plus the selfsigned ClusterIssuer every Ingress uses.
+#
+# Two sources: the upstream chart (pinned, with its CRDs) and
+# infra/cert-manager/clusterissuer-selfsigned.yaml from this repository. The
+# issuer carries sync-wave 1, so ArgoCD creates it only after the chart's
+# Deployments, the webhook among them, are healthy.
+#
+# Wave 0 of the root: the Ingresses in later waves are validated by
+# ingress-nginx and get certificates from this issuer.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: stackup
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  sources:
+    - repoURL: https://charts.jetstack.io
+      chart: cert-manager
+      targetRevision: v1.20.2
+      helm:
+        valuesObject:
+          crds:
+            enabled: true
+    - repoURL: {{ .Values.repoURL }}
+      targetRevision: {{ .Values.targetRevision }}
+      path: infra/cert-manager
+      directory:
+        include: clusterissuer-selfsigned.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+  ignoreDifferences:
+    {{- include "stackup.ignoreWebhookCaBundle" . | nindent 4 }}
+  syncPolicy:
+    {{- include "stackup.syncPolicy" . | nindent 4 }}
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

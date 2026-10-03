@@ -1,0 +1,10 @@
+# Check text files out with LF line endings on every platform. Git for
+# Windows defaults to core.autocrlf=true, which would give the shell scripts
+# CRLF endings; bash in WSL or Git Bash then stops on the first line with
+# "$'\r': command not found" or "set: pipefail: invalid option name".
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.tgz binary

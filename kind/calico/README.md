@@ -23,8 +23,8 @@ Calico:
 
 ## Bring-up order (done by `scripts/bootstrap.sh`)
 
-1. Apply the tigera-operator manifest. It deploys the operator into the `tigera-operator` namespace.
-2. `kubectl wait --for=condition=Available deployment/tigera-operator -n tigera-operator --timeout=180s`. The operator must be ready before it can reconcile the Installation.
+1. `kubectl apply --server-side --force-conflicts -f <tigera-operator manifest>`. It deploys the operator into the `tigera-operator` namespace. Server-side, because the operator's CRDs are larger than the 256 KB annotation a client-side `kubectl apply` writes (`metadata.annotations: Too long`); a server-side apply is also a no-op when run again.
+2. `kubectl wait --for=condition=Available deployment/tigera-operator -n tigera-operator --timeout=180s`, after the CRDs report `Established`. The operator must be ready before it can reconcile the Installation.
 3. `kubectl apply -f kind/calico/installation.yaml`. The operator deploys `calico-node` (a DaemonSet), `calico-kube-controllers` and `calico-apiserver`.
 4. `kubectl wait --for=condition=Ready node --all --timeout=300s`. The node turns Ready once Calico's data plane is up.
 

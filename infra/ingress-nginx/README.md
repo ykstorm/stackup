@@ -2,9 +2,11 @@
 
 The cluster's only ingress controller, installed from the upstream Helm chart with the overrides in [`values.yaml`](./values.yaml), so the install settings are reviewable in git rather than buried in `--set` flags.
 
-`scripts/bootstrap.sh` installs it, and the ArgoCD Application in `argocd/apps/ingress-nginx.yaml` manages it from then on with the same chart and this values file.
+The `ingress-nginx` Application in `argocd/apps/templates/ingress-nginx.yaml` installs it with the pinned chart and this values file, in sync wave 0: its admission webhook validates every Ingress, so it has to be serving before the charts in later waves create theirs.
 
 ## Install or upgrade by hand
+
+On a cluster without ArgoCD:
 
 ```sh
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
@@ -25,7 +27,7 @@ laptop:443  --Docker port publish-->  kind node:443  --hostPort-->  ingress-ngin
                                        in kind/cluster.yaml)
 ```
 
-If `https://grafana.localtest.me/` does not reach the controller, check both halves of that path:
+If `https://grafana.localtest.me/` does not reach the controller, check both halves of that path (`make port-forward` reaches the UIs without it):
 
 1. `docker ps --format '{{.Names}}\t{{.Ports}}' | grep stackup` must show `0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp`. If it does not, the cluster was created without the `extraPortMappings` in `kind/cluster.yaml`; recreate it with `make down && make up`.
 2. `kubectl get pods -n ingress-nginx` must show the controller pod `1/1 Running`. If it is `Pending`, another pod holds the host port, usually a stale rollout (see the `Recreate` note below).

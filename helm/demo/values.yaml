@@ -4,9 +4,10 @@
 
 image:
   repository: stackup-demo
-  # Built locally and side-loaded into kind (see apps/demo/Dockerfile and
-  # the README "Build the demo image into kind" section). Never pulled
-  # from a registry, so pullPolicy is IfNotPresent.
+  # Built from apps/demo and loaded into the kind node by scripts/bootstrap.sh
+  # (make up) before ArgoCD creates the Rollout; `make demo-image
+  # DEMO_IMAGE=stackup-demo:<tag>` does the same for a new tag. Never pulled
+  # from a registry, so pullPolicy is IfNotPresent (make lint checks both).
   tag: v1
   pullPolicy: IfNotPresent
 

@@ -1,5 +1,7 @@
 # Live verification — stackup
 
+This page records one run, on 2026-06-24, of the bootstrap as it was then: it installed the platform charts with `helm` and handed them to ArgoCD afterwards. The bootstrap has changed since. It now installs only kind, Calico and ArgoCD, applies the CRDs server-side, and lets ArgoCD install every other component in sync waves. No run of the current version is recorded on this page.
+
 **Date:** 2026-06-24
 **Host:** Windows 11 + Docker Desktop (kind v1.35.0 node, 12 vCPU, ~3.7 GB RAM allocated to the Linux engine)
 **Scope:** full `make up` bring-up on a clean cluster, then the Argo Rollouts canary end to end.

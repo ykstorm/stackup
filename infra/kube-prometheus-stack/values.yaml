@@ -1,6 +1,6 @@
 # kube-prometheus-stack values for the local kind cluster.
 #
-# The chart version is pinned in argocd/apps/kube-prometheus-stack.yaml.
+# The chart version is pinned in argocd/apps/templates/kube-prometheus-stack.yaml.
 # Chart defaults not mentioned here are accepted as-is.
 
 # -----------------------------------------------------------------------

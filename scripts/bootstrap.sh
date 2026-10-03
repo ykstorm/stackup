@@ -1,173 +1,182 @@
 #!/usr/bin/env bash
-# stackup bootstrap — bring up a kind cluster end to end, in dependency
-# order, with a real `kubectl wait` gate between every step so a later
-# step never races ahead of an unready prerequisite.
+# Brings the stackup cluster up, one step at a time, each waiting for the last:
 #
-# `make up` invokes it. It is idempotent: re-running against an existing
-# cluster re-applies harmlessly.
+#   1. the kind cluster from kind/cluster.yaml (kind's own CNI turned off)
+#   2. Calico, applied server-side, then the node Ready
+#   3. the `app` namespace with the restricted Pod Security profile
+#   4. ArgoCD: its CRDs from the matching release (server-side), then the
+#      infra/argocd chart
+#   5. the demo image, built from apps/demo and loaded into the node
+#   6. the app-of-apps root (argocd/root-app.yaml)
+#   7. ArgoCD installs everything else from git, in sync waves; this script
+#      waits until every Application is Synced and Healthy
 #
-# Ordering (each step blocks on the previous):
-#   1. kind create cluster (Calico CNI disabled in kind/cluster.yaml)
-#   2. install Calico (tigera-operator), wait operator Available
-#   3. apply Calico Installation CR, wait NODES Ready (CNI data-plane up)
-#   4. apply the `app` workload namespace (restricted PSS)
-#   5. install sealed-secrets controller, wait it Ready
-#   7. install ingress-nginx / cert-manager / kube-prometheus-stack,
-#      wait each Available
-#   8. install Argo Rollouts + ArgoCD (wrapper charts), wait Available
-#   9. build + side-load the demo image, install the demo chart, wait Ready
-#  10. register the ArgoCD app-of-apps root; wait Applications Synced
+# Each component has one owner: this script for the first five steps, ArgoCD
+# for the rest. Run it through ./setup.sh (make up), which checks the
+# prerequisites first. It is safe to run again against an existing cluster.
 #
-# Run live on 2026-06-24 on a kind cluster (Docker Desktop): every step
-# below brought its component up, and the demo Argo Rollouts canary completed
-# end to end (25→50→75→100%) with its Prometheus success-rate AnalysisRun
-# passing 3/3 (1.0 ≥ 0.95). See docs/VERIFIED.md. The `helm --wait` calls
-# below are gated by `set -e`, so on a slow host the first chart whose images
-# pull slowly aborts the whole run; rerunning (images now cached) clears it.
+# Environment:
+#   STACKUP_REPO          repository ArgoCD syncs from (default: below)
+#   STACKUP_REVISION      branch, tag or commit to sync (default: main)
+#   STACKUP_APPS_TIMEOUT  seconds to wait for the Applications (default: 1200)
 set -euo pipefail
 
-CLUSTER_NAME="stackup"
-CALICO_VERSION="v3.28.2"
-SEALED_SECRETS_VERSION="v0.27.1"
-NAMESPACE="app"
-DEMO_IMAGE="stackup-demo:v1"
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+# shellcheck source=scripts/lib.sh
+. scripts/lib.sh
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$repo_root"
-
-step() { echo ""; echo "==> $*"; }
+CLUSTER_NAME=stackup
+KIND_CONFIG=kind/cluster.yaml
+CALICO_VERSION=v3.28.2
+# Keep equal to appVersion in infra/argocd/Chart.yaml (lint.sh checks).
+ARGOCD_VERSION=v3.4.3
+NAMESPACE=app
+DEFAULT_REPO=https://github.com/ykstorm/stackup
+REPO_URL="${STACKUP_REPO:-$DEFAULT_REPO}"
+REVISION="${STACKUP_REVISION:-main}"
+APPS_TIMEOUT="${STACKUP_APPS_TIMEOUT:-1200}"
+APPS=(root cert-manager ingress-nginx kube-prometheus-stack argo-rollouts sealed-secrets demo)
 
 # --------------------------------------------------------------------- #
-# 1. kind cluster
+step "1. kind cluster '$CLUSTER_NAME' from $KIND_CONFIG"
 # --------------------------------------------------------------------- #
-step "creating kind cluster '$CLUSTER_NAME'"
+[ -f "$KIND_CONFIG" ] || die "$KIND_CONFIG not found; run this from a full checkout of the repository"
 if kind get clusters 2>/dev/null | grep -qx "$CLUSTER_NAME"; then
-  echo "    cluster already exists — skipping create"
+  info "the cluster already exists; reusing it"
+  kubectl config use-context "kind-$CLUSTER_NAME" >/dev/null
+  # Earlier versions of this script installed the platform charts with helm
+  # directly; ArgoCD would now have to take those objects over.
+  if helm status kps -n monitoring >/dev/null 2>&1 || helm status ingress-nginx -n ingress-nginx >/dev/null 2>&1; then
+    info "this cluster was created by an older make up that installed the charts with helm;"
+    info "if the Applications do not become Healthy, recreate it: make down && make up"
+  fi
 else
-  kind create cluster --name "$CLUSTER_NAME" --config kind/cluster.yaml --wait 60s
+  # No --wait: the node only becomes Ready once Calico runs (step 2).
+  kind create cluster --name "$CLUSTER_NAME" --config "$KIND_CONFIG"
 fi
 kubectl config use-context "kind-$CLUSTER_NAME" >/dev/null
 
 # --------------------------------------------------------------------- #
-# 2. Calico CNI — tigera-operator, then wait it Available
+step "2. Calico $CALICO_VERSION"
 # --------------------------------------------------------------------- #
-step "installing Calico CNI (tigera-operator $CALICO_VERSION)"
-# `create` (not server-side apply): the operator manifest is large and
-# apply can hit the annotation-size limit. AlreadyExists on re-run is fine.
-kubectl create -f "https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml" 2>/dev/null \
-  || echo "    operator resources already present"
-
-step "waiting for tigera-operator Available"
-kubectl wait --for=condition=Available deployment/tigera-operator \
-  -n tigera-operator --timeout=180s
-
-# --------------------------------------------------------------------- #
-# 3. Calico Installation CR, then wait NODES Ready (CNI data-plane)
-# --------------------------------------------------------------------- #
-step "applying Calico Installation CR"
-kubectl apply -f kind/calico/installation.yaml
-
-step "waiting for nodes Ready (Calico data-plane up)"
-# Nodes stay NotReady until the Calico CNI binary lands and pod networking
-# comes up. Allow 5 min on first bring-up (image pulls).
+# Server-side apply: the operator's CRDs are larger than the 256 KB
+# annotation a client-side `kubectl apply` writes, and a re-run is a no-op.
+retry 3 10 kubectl apply --server-side --force-conflicts \
+  -f "https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml" >/dev/null
+kubectl wait --for=condition=Established --timeout=60s \
+  crd/installations.operator.tigera.io crd/apiservers.operator.tigera.io
+kubectl wait --for=condition=Available deployment/tigera-operator -n tigera-operator --timeout=180s
+kubectl apply -f kind/calico/installation.yaml >/dev/null
+info "waiting for the node to become Ready (it does once Calico runs)"
 kubectl wait --for=condition=Ready node --all --timeout=300s
 
 # --------------------------------------------------------------------- #
-# 4. workload namespace (restricted PSS) — must exist before SealedSecrets
+step "3. namespace '$NAMESPACE' (restricted Pod Security profile)"
 # --------------------------------------------------------------------- #
-step "applying the '$NAMESPACE' workload namespace"
-kubectl apply -f manifests/app/00-namespace.yaml
+kubectl apply -f manifests/app/00-namespace.yaml >/dev/null
 
 # --------------------------------------------------------------------- #
-# 5. sealed-secrets controller, then wait it Ready
+step "4. ArgoCD $ARGOCD_VERSION"
 # --------------------------------------------------------------------- #
-step "installing sealed-secrets controller (${SEALED_SECRETS_VERSION} release manifest)"
-# Install from the upstream release manifest rather than a Helm repo — the
-# sealed-secrets Helm index (bitnami-labs.github.io/sealed-secrets) 404s, and
-# the controller is a single static manifest anyway.
-kubectl apply -f "https://github.com/bitnami-labs/sealed-secrets/releases/download/${SEALED_SECRETS_VERSION}/controller.yaml"
-
-step "waiting for sealed-secrets controller Available"
-kubectl wait --for=condition=Available deployment/sealed-secrets-controller \
-  -n kube-system --timeout=180s
-
-# --------------------------------------------------------------------- #
-# 7. foundation platform charts, each waited
-# --------------------------------------------------------------------- #
-step "installing ingress-nginx"
-helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx >/dev/null 2>&1 || true
-helm repo add jetstack https://charts.jetstack.io >/dev/null 2>&1 || true
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
-helm repo update >/dev/null
-helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-  -n ingress-nginx --create-namespace \
-  -f infra/ingress-nginx/values.yaml --wait --timeout 180s
-
-step "installing cert-manager"
-helm upgrade --install cert-manager jetstack/cert-manager \
-  -n cert-manager --create-namespace --set installCRDs=true --wait --timeout 180s
-kubectl apply -f infra/cert-manager/clusterissuer-selfsigned.yaml
-
-step "installing kube-prometheus-stack"
-helm upgrade --install kps prometheus-community/kube-prometheus-stack \
-  -n monitoring --create-namespace \
-  -f infra/kube-prometheus-stack/values.yaml --wait --timeout 600s
-
-# --------------------------------------------------------------------- #
-# 8. GitOps control plane — Argo Rollouts (CRDs first), then ArgoCD
-# --------------------------------------------------------------------- #
-step "installing Argo Rollouts + ArgoCD (wrapper charts)"
-helm repo add argo https://argoproj.github.io/argo-helm >/dev/null 2>&1 || true
-helm repo update argo >/dev/null
-for chart in infra/argo-rollouts infra/argocd; do
-  ns="$(basename "$chart")"
-  echo "    installing $chart into $ns"
-  helm dependency build "$chart" >/dev/null
-  helm upgrade --install "$ns" "$chart" \
-    -n "$ns" --create-namespace --wait --timeout 300s
+# The CRDs come from the ArgoCD release that matches the chart, applied
+# server-side before the chart (which has crds.install: false). The
+# ApplicationSet CRD is over 1 MB; a client-side apply fails on it, and
+# without it the ArgoCD UI shows "Failed to load data".
+for crd in application applicationset appproject; do
+  retry 3 10 kubectl apply --server-side --force-conflicts \
+    -f "https://raw.githubusercontent.com/argoproj/argo-cd/${ARGOCD_VERSION}/manifests/crds/${crd}-crd.yaml" >/dev/null
 done
+kubectl wait --for=condition=Established --timeout=60s \
+  crd/applications.argoproj.io crd/applicationsets.argoproj.io crd/appprojects.argoproj.io
 
-step "waiting for ArgoCD server Available"
+helm repo add argo https://argoproj.github.io/argo-helm --force-update >/dev/null
+retry 3 10 helm dependency build infra/argocd >/dev/null
+info "installing the chart and waiting for its pods"
+# Two attempts: on a slow connection the first can time out on image pulls.
+retry 2 15 helm upgrade --install argocd infra/argocd \
+  -n argocd --create-namespace --wait --timeout 10m >/dev/null
 kubectl wait --for=condition=Available deployment --all -n argocd --timeout=300s
 
 # --------------------------------------------------------------------- #
-# 9. demo workload — build, side-load, install, wait Ready
+step "5. demo image"
 # --------------------------------------------------------------------- #
-step "building + side-loading the demo image ($DEMO_IMAGE)"
-docker build -t "$DEMO_IMAGE" apps/demo
-kind load docker-image "$DEMO_IMAGE" --name "$CLUSTER_NAME"
-
-step "installing demo chart (Argo Rollout canary) into '$NAMESPACE'"
-helm upgrade --install demo helm/demo \
-  -n "$NAMESPACE" --create-namespace \
-  -f helm/demo/values.dev.yaml --wait --timeout 180s
-# Rollout objects don't satisfy `helm --wait` the way Deployments do; gate
-# on the Rollout's own pods becoming Ready.
-kubectl rollout status deployment/demo -n "$NAMESPACE" --timeout=180s 2>/dev/null \
-  || kubectl wait --for=condition=Ready pod -n "$NAMESPACE" \
-       -l app.kubernetes.io/name=demo --timeout=180s
+# The demo Rollout runs a local image with imagePullPolicy IfNotPresent: it is
+# built here and loaded into the node, never pulled from a registry. It has
+# to be on the node before ArgoCD creates the Rollout in step 7.
+image="$(demo_image)"
+[ -n "$image" ] || die "could not read the demo image from helm/demo"
+node="${CLUSTER_NAME}-control-plane"
+docker build -t "$image" apps/demo
+kind load docker-image "$image" --name "$CLUSTER_NAME"
+docker exec "$node" crictl inspecti "$(node_image_ref "$image")" >/dev/null 2>&1 \
+  || die "$image is not on the node after kind load (see docs/troubleshooting.md, ImagePullBackOff)"
+info "$image is on the node"
 
 # --------------------------------------------------------------------- #
-# 10. GitOps takeover — app-of-apps root, then wait Applications Synced
+step "6. app-of-apps root: $REPO_URL at $REVISION"
 # --------------------------------------------------------------------- #
-step "registering the ArgoCD app-of-apps root"
-kubectl apply -f argocd/root-app.yaml
-
-step "waiting for ArgoCD applications to sync"
-sleep 30  # allow ArgoCD to register the children before we wait on them
-kubectl wait --for=jsonpath='{.status.sync.status}'=Synced \
-  applications --all -n argocd --timeout=300s || \
-  echo "    (some apps still progressing — check the ArgoCD UI)"
+root="$(<argocd/root-app.yaml)"
+root="${root//"$DEFAULT_REPO"/"$REPO_URL"}"
+root="${root//"targetRevision: main"/"targetRevision: $REVISION"}"
+kubectl apply -f - <<<"$root" >/dev/null
 
 # --------------------------------------------------------------------- #
-# Done
+step "7. waiting for ArgoCD to sync the Applications (up to $((APPS_TIMEOUT / 60)) minutes)"
 # --------------------------------------------------------------------- #
-step "cluster ready"
-echo ""
-echo "localtest.me resolves to 127.0.0.1; no hosts-file entries are needed."
-echo "  Grafana:           https://grafana.localtest.me (admin / prom-operator)"
-echo "  Canary dashboard:  https://grafana.localtest.me/d/stackup-canary"
-echo "  ArgoCD:            https://argocd.localtest.me (admin; password in secret argocd-initial-admin-secret)"
-echo ""
-echo "Watch the canary:  make rollout-status   (or make rollout-ui for http://localhost:3100/rollouts)"
-echo "Demo metrics:      kubectl -n $NAMESPACE port-forward svc/demo 3000:3000 then curl localhost:3000/metrics"
+info "wave 0: cert-manager, ingress-nginx; wave 1: kube-prometheus-stack, argo-rollouts, sealed-secrets; wave 2: demo"
+info "the first run pulls every image, so this is the slow part"
+
+deadline=$(( $(date +%s) + APPS_TIMEOUT ))
+last=""
+while :; do
+  table="$(app_table)"
+  pending=0
+  unhealthy=0
+  summary=""
+  for app in "${APPS[@]}"; do
+    state="$(app_state "$table" "$app")"
+    summary="$summary $app=$state"
+    [ "$state" = "Synced/Healthy" ] || pending=$((pending + 1))
+    [ "${state#*/}" = "Healthy" ] || unhealthy=$((unhealthy + 1))
+  done
+  if [ "$summary" != "$last" ]; then
+    info "${summary# }"
+    last="$summary"
+  fi
+  [ "$pending" -eq 0 ] && break
+  if [ "$(date +%s)" -ge "$deadline" ]; then
+    if [ "$unhealthy" -eq 0 ]; then
+      info "every Application is Healthy, but ArgoCD still reports differences from git for some;"
+      info "open ArgoCD to see them (make port-forward, then http://localhost:8080)"
+      break
+    fi
+    kubectl get applications.argoproj.io -n argocd || true
+    for app in "${APPS[@]}"; do
+      msg="$(kubectl get applications.argoproj.io "$app" -n argocd \
+        -o jsonpath='{.status.operationState.message}{"\n"}{range .status.conditions[*]}{.type}: {.message}{"\n"}{end}' 2>/dev/null || true)"
+      if [ -n "${msg//[[:space:]]/}" ]; then
+        printf -- '--- %s\n%s\n' "$app" "$msg"
+      fi
+    done
+    die "the Applications did not become Synced and Healthy in time; see docs/troubleshooting.md"
+  fi
+  sleep 10
+done
+
+kubectl wait --for=jsonpath='{.status.phase}'=Healthy rollout/demo -n "$NAMESPACE" --timeout=300s >/dev/null
+
+# --------------------------------------------------------------------- #
+step "done"
+# --------------------------------------------------------------------- #
+cat <<'EOF'
+Open these (localtest.me resolves to 127.0.0.1; the certificates are self-signed):
+  ArgoCD            https://argocd.localtest.me   user admin, password from:
+                    kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
+  Grafana           https://grafana.localtest.me  admin / prom-operator
+  Canary dashboard  https://grafana.localtest.me/d/stackup-canary
+  Demo              https://demo.localtest.me
+
+If those addresses do not answer, make port-forward serves the same UIs on localhost.
+  make smoke            check that everything is up
+  make rollout-status   watch the demo Rollout (make rollout-ui for a web view)
+EOF

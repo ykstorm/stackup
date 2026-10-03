@@ -17,6 +17,11 @@
 #
 # Moving to a real domain means replacing `selfSigned: {}` with an `acme:`
 # block (DNS-01 solver) and pointing the Ingress annotations at it.
+#
+# The cert-manager Application (argocd/apps/templates/cert-manager.yaml)
+# applies this file next to the chart. Sync-wave 1 holds it back until the
+# chart's Deployments are healthy: the cert-manager webhook has to be serving
+# before it accepts a ClusterIssuer.
 
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
@@ -24,5 +29,7 @@ metadata:
   name: selfsigned
   labels:
     app.kubernetes.io/part-of: stackup
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   selfSigned: {}

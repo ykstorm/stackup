@@ -250,6 +250,54 @@ else
   fi
 
   # ------------------------------------------------------------------- #
+  section "ArgoCD Applications"
+  # ------------------------------------------------------------------- #
+  if out="$(helm lint argocd/apps 2>&1)"; then
+    ok "helm lint argocd/apps"
+  else
+    fail "helm lint argocd/apps"
+    printf '%s\n' "$out" | indent
+  fi
+  apps_render="$(helm template root argocd/apps 2>&1)"
+  if [ "$have_kubeconform" = 1 ]; then
+    kc "kubeconform argocd/apps (rendered)" <<<"$apps_render"
+    kc "kubeconform argocd/root-app.yaml" argocd/root-app.yaml
+  fi
+  expect_count "argocd/apps" "$apps_render" Application 6
+  for app in argo-rollouts cert-manager demo ingress-nginx kube-prometheus-stack sealed-secrets; do
+    if ! printf '%s\n' "$apps_render" | grep -q "^  name: $app\$"; then
+      fail "argocd/apps: no Application named $app"
+    fi
+  done
+  ssa="$(printf '%s\n' "$apps_render" | grep -c 'ServerSideApply=true' || true)"
+  if [ "$ssa" = 6 ]; then
+    ok "argocd/apps: every child uses server-side apply (CRDs over 256 KB)"
+  else
+    fail "argocd/apps: $ssa of 6 children set ServerSideApply=true"
+  fi
+  # Pointing the tree at a fork and a revision must change every reference
+  # to this repository (bootstrap.sh does this for STACKUP_REPO/REVISION).
+  fork_render="$(helm template root argocd/apps --set repoURL=https://example.com/fork.git --set targetRevision=feature 2>&1)"
+  fork_refs="$(printf '%s\n' "$fork_render" | grep -c 'targetRevision: feature' || true)"
+  if printf '%s\n' "$fork_render" | grep -q 'ykstorm/stackup'; then
+    fail "argocd/apps: a child still names ykstorm/stackup when repoURL is overridden"
+  elif [ "$fork_refs" = 6 ]; then
+    ok "argocd/apps: repoURL and targetRevision reach all 6 sources from this repository"
+  else
+    fail "argocd/apps: targetRevision override reached $fork_refs of 6 sources"
+  fi
+  root_repos="$(awk '$1 == "repoURL:" { print $2 }' argocd/root-app.yaml | sort -u)"
+  root_revs="$(awk '$1 == "targetRevision:" { print $2 }' argocd/root-app.yaml | sort -u)"
+  values_repo="$(awk '$1 == "repoURL:" { print $2 }' argocd/apps/values.yaml)"
+  if [ "$(printf '%s\n' "$root_repos" | wc -l | tr -d ' ')" = 1 ] \
+      && [ "$(printf '%s\n' "$root_revs" | wc -l | tr -d ' ')" = 1 ] \
+      && [ "$root_repos" = "$values_repo" ]; then
+    ok "root-app.yaml: its source and the values it passes to the children agree ($root_repos @ $root_revs)"
+  else
+    fail "root-app.yaml: repoURL/targetRevision differ between its source, its values and argocd/apps/values.yaml"
+  fi
+
+  # ------------------------------------------------------------------- #
   section "Infra wrapper charts"
   # ------------------------------------------------------------------- #
   deps_ready() { compgen -G "$1/charts/*.tgz" >/dev/null; }
@@ -301,14 +349,61 @@ for port in 80 443; do
   fi
 done
 
+kind_config="$(awk -F= '$1 == "KIND_CONFIG" { print $2 }' scripts/bootstrap.sh)"
+if [ -n "$kind_config" ] && [ -f "$kind_config" ]; then
+  ok "bootstrap.sh creates the cluster from $kind_config, which exists"
+else
+  fail "bootstrap.sh KIND_CONFIG '$kind_config' does not exist"
+fi
+
 if [ "$have_kubeconform" = 1 ]; then
-  kc "kubeconform raw manifests" manifests/app/00-namespace.yaml \
-    infra/cert-manager/clusterissuer-selfsigned.yaml kind/calico/installation.yaml \
-    ci/prometheus.yaml ci/traffic.yaml
-  kc "kubeconform ArgoCD Applications" argocd/root-app.yaml argocd/apps/*.yaml
+  # -skip: the Sealed Secrets release manifest carries its CRD, which has no
+  # schema of its own to check against.
+  kc "kubeconform raw manifests" -skip CustomResourceDefinition manifests/app/00-namespace.yaml \
+    infra/cert-manager/clusterissuer-selfsigned.yaml infra/sealed-secrets/controller.yaml \
+    kind/calico/installation.yaml ci/prometheus.yaml ci/traffic.yaml
 else
   missing kubeconform "schema validation of the raw manifests"
 fi
+
+# --------------------------------------------------------------------- #
+section "Pinned versions"
+# --------------------------------------------------------------------- #
+# app_version <Chart.yaml>: its appVersion with a leading v.
+app_version() { awk '$1 == "appVersion:" { gsub(/"/, "", $2); sub(/^v/, "", $2); print "v" $2 }' "$1"; }
+
+argocd_version="$(app_version infra/argocd/Chart.yaml)"
+bootstrap_argocd="$(awk -F= '$1 == "ARGOCD_VERSION" { print $2 }' scripts/bootstrap.sh)"
+if [ "$argocd_version" = "$bootstrap_argocd" ]; then
+  ok "ArgoCD: bootstrap.sh applies the CRDs of $bootstrap_argocd, the chart's appVersion"
+else
+  fail "ArgoCD: bootstrap.sh ARGOCD_VERSION $bootstrap_argocd differs from infra/argocd appVersion $argocd_version"
+fi
+
+rollouts_version="$(app_version infra/argo-rollouts/Chart.yaml)"
+pins="$( { grep -rhoE 'ROLLOUTS_VERSION=v[0-9.]+' scripts; \
+           grep -rhoE 'rollouts-plugin-version: *v[0-9.]+' .github; } 2>/dev/null \
+         | grep -oE 'v[0-9.]+$' | sort -u)"
+if [ -z "$pins" ] || [ "$pins" = "$rollouts_version" ]; then
+  ok "Argo Rollouts: the plugin pins match the controller, $rollouts_version"
+else
+  fail "Argo Rollouts: plugin pins $(printf '%s\n' "$pins" | tr '\n' ' ')differ from infra/argo-rollouts appVersion $rollouts_version"
+fi
+
+# The wrapper charts' appVersion must be the upstream chart's, once the
+# dependency has been downloaded.
+for chart in infra/argocd infra/argo-rollouts; do
+  tgz="$(compgen -G "$chart/charts/*.tgz" | head -n 1)"
+  [ -n "$tgz" ] || continue
+  # The top-level Chart.yaml only, not a bundled subchart's.
+  member="$(tar -tzf "$tgz" 2>/dev/null | grep -E '^[^/]+/Chart\.yaml$' | head -n 1)"
+  upstream="$(tar -xzOf "$tgz" "$member" 2>/dev/null | awk '$1 == "appVersion:" { gsub(/"/, "", $2); sub(/^v/, "", $2); print "v" $2; exit }')"
+  if [ "$upstream" = "$(app_version "$chart/Chart.yaml")" ]; then
+    ok "$chart: appVersion matches the upstream chart ($upstream)"
+  else
+    fail "$chart: appVersion $(app_version "$chart/Chart.yaml") differs from the upstream chart's $upstream"
+  fi
+done
 
 # --------------------------------------------------------------------- #
 section "Line endings"
@@ -318,6 +413,12 @@ if [ -z "$crlf" ]; then
   ok "no file is committed with CRLF line endings"
 else
   fail "committed with CRLF line endings: $(printf '%s\n' "$crlf" | tr '\n' ' ')"
+fi
+# A checkout made before .gitattributes existed can still have CRLF scripts.
+crlf_scripts="$(git ls-files --eol -- '*.sh' Makefile 2>/dev/null | awk '$2 == "w/crlf" { print $NF }')"
+if [ -n "$crlf_scripts" ]; then
+  warn "checked out with CRLF line endings, which bash cannot run: $(printf '%s\n' "$crlf_scripts" | tr '\n' ' ')"
+  warn "re-clone the repository, or see docs/troubleshooting.md (set: pipefail: invalid option name)"
 fi
 
 printf '\n'

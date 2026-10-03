@@ -25,21 +25,27 @@ export default function Architecture() {
 
       <h2>The GitOps tree</h2>
       <p>
-        <code>make up</code> ends by applying one root ArgoCD Application. It
-        points at <code>argocd/apps/</code>, which defines six child
-        applications:
+        <code>make up</code> installs only kind, Calico, the <code>app</code>{' '}
+        namespace and ArgoCD, loads the demo image onto the node, and applies
+        one root ArgoCD Application. The root renders{' '}
+        <code>argocd/apps/</code>, a small Helm chart that defines six child
+        applications, and ArgoCD installs them in three sync waves:
       </p>
       <ul>
-        <li>argo-rollouts: the canary controller</li>
-        <li>cert-manager: certificates for each Ingress</li>
-        <li>demo: the canary subject, from the chart in helm/demo</li>
-        <li>ingress-nginx: the ingress controller</li>
-        <li>kube-prometheus-stack: Prometheus and Grafana</li>
-        <li>sealed-secrets: decrypts SealedSecret resources</li>
+        <li>wave 0, cert-manager: certificates for each Ingress</li>
+        <li>wave 0, ingress-nginx: the ingress controller</li>
+        <li>wave 1, kube-prometheus-stack: Prometheus and Grafana</li>
+        <li>wave 1, argo-rollouts: the canary controller</li>
+        <li>wave 1, sealed-secrets: decrypts SealedSecret resources</li>
+        <li>wave 2, demo: the canary subject, from the chart in helm/demo</li>
       </ul>
       <p>
-        Each one syncs automatically with prune and self-heal turned on, so
-        state lives in git rather than in <code>kubectl apply</code> commands.
+        Each wave waits for the previous one to be Healthy, so the demo finds
+        the Rollout and ServiceMonitor CRDs it needs. Each child syncs
+        automatically with prune and self-heal turned on, and applies
+        server-side, because several of the charts ship CRDs too large for a
+        client-side apply. State lives in git rather than in{' '}
+        <code>kubectl apply</code> commands.
       </p>
 
       <h2>Metrics</h2>

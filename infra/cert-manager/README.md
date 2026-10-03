@@ -2,9 +2,11 @@
 
 cert-manager plus one self-signed `ClusterIssuer` named `selfsigned`. Every Ingress in the cluster gets its certificate from this issuer.
 
-`scripts/bootstrap.sh` installs the chart and applies the issuer. The ArgoCD Application in `argocd/apps/cert-manager.yaml` manages the chart from then on. The issuer is a cert-manager custom resource applied by the script, not part of that Application.
+The `cert-manager` Application in `argocd/apps/templates/cert-manager.yaml` installs both, in sync wave 0: the pinned chart with its CRDs (`crds.enabled: true`), and `clusterissuer-selfsigned.yaml` from this directory as a second source. The issuer carries `argocd.argoproj.io/sync-wave: "1"`, so ArgoCD creates it after the chart's Deployments are healthy; before the cert-manager webhook serves, the API server would reject it.
 
 ## Install by hand
+
+On a cluster without ArgoCD:
 
 ```sh
 helm repo add jetstack https://charts.jetstack.io
@@ -13,7 +15,7 @@ helm repo update jetstack
 helm upgrade --install cert-manager jetstack/cert-manager \
   --namespace cert-manager --create-namespace \
   --version v1.20.2 \
-  --set installCRDs=true \
+  --set crds.enabled=true \
   --wait --timeout 5m
 
 kubectl apply -f infra/cert-manager/clusterissuer-selfsigned.yaml

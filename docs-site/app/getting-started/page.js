@@ -26,24 +26,56 @@ export default function GettingStarted() {
           <code>make rollout-status</code> and <code>make rollout-ui</code>.
         </li>
         <li>
-          <code>git</code>, <code>bash</code> and <code>make</code>. On
-          Windows, run from Git Bash or WSL; without <code>make</code>, run{' '}
-          <code>bash scripts/bootstrap.sh</code>.
+          <code>git</code> and <code>bash</code>, plus <code>make</code> for the
+          make targets.
         </li>
         <li>Ports 80 and 443 free on the host.</li>
+        <li>
+          Network access to GitHub and the Helm chart repositories: ArgoCD
+          installs the components from there.
+        </li>
       </ul>
+      <p>
+        <code>make preflight</code> checks all of these and prints the install
+        command for anything missing.
+      </p>
 
       <h2>Bring it up</h2>
       <pre>
         <code>{`git clone https://github.com/ykstorm/stackup && cd stackup
-make up`}</code>
+make up        # or ./setup.sh`}</code>
       </pre>
       <p>
-        <code>make up</code> runs <code>scripts/bootstrap.sh</code>. It creates
-        the kind cluster, installs Calico and the platform charts one at a time
-        (waiting for each), builds the <code>demo</code> image and loads it into
-        kind, installs the demo chart, and applies the root ArgoCD Application.
-        From then on ArgoCD manages everything from git.
+        <code>make up</code> runs <code>./setup.sh</code>: the preflight check,
+        then <code>scripts/bootstrap.sh</code>. The bootstrap creates the kind
+        cluster, installs Calico and ArgoCD (its CRDs first), builds the{' '}
+        <code>demo</code> image and loads it into the node, and applies the root
+        ArgoCD Application. ArgoCD then installs everything else from git in
+        three sync waves, and the script waits until every Application is
+        Synced and Healthy. The first run pulls every image, so it is the slow
+        one; running <code>make up</code> again reuses the cluster.
+      </p>
+
+      <h2>Windows and WSL</h2>
+      <ul>
+        <li>
+          Use WSL 2, with Docker Desktop&apos;s WSL integration turned on or
+          Docker Engine installed inside WSL. Clone the repository into the
+          Linux file system (<code>~/stackup</code>, not{' '}
+          <code>/mnt/c/...</code>), then run <code>make up</code>.
+        </li>
+        <li>
+          Git Bash with Docker Desktop works too. Git for Windows has no{' '}
+          <code>make</code>, so run <code>./setup.sh</code>.
+        </li>
+        <li>
+          PowerShell and cmd cannot run the scripts; <code>make</code> started
+          from either stops with a message.
+        </li>
+      </ul>
+      <p>
+        <code>docs/troubleshooting.md</code> in the repository lists the errors
+        seen on Windows and WSL and the fix for each.
       </p>
 
       <h2>Open the cluster</h2>
@@ -76,13 +108,22 @@ make up`}</code>
           <code>http_requests_total</code>.
         </li>
       </ul>
+      <p>
+        If those addresses do not answer, <code>make port-forward</code> serves
+        the same UIs on localhost: ArgoCD on <code>http://localhost:8080</code>,
+        Grafana on <code>http://localhost:3000</code>, Prometheus on{' '}
+        <code>http://localhost:9090</code> and the demo on{' '}
+        <code>http://localhost:8081</code>. <code>make smoke</code> checks the
+        whole cluster from the command line.
+      </p>
 
       <h2>Ship a change</h2>
       <p>
-        ArgoCD tracks <code>main</code> of the repository named in{' '}
-        <code>argocd/</code>, which is <code>ykstorm/stackup</code>. To deploy
-        from git yourself, fork it and replace that URL with your fork&apos;s
-        before running <code>make up</code>. Then:
+        ArgoCD syncs <code>main</code> of <code>ykstorm/stackup</code>. To
+        deploy your own changes, fork it and run{' '}
+        <code>STACKUP_REPO=https://github.com/&lt;you&gt;/stackup make up</code>
+        ; <code>STACKUP_REVISION</code> picks another branch, tag or commit.
+        Then:
       </p>
       <pre>
         <code>{`make demo-image DEMO_IMAGE=stackup-demo:v2   # build v2 and load it into kind
@@ -93,19 +134,23 @@ make rollout-status                           # watch the canary`}</code>
       <h2>Makefile targets</h2>
       <pre>
         <code>{`make help            # list targets
-make up              # create the cluster and install everything
-make down            # delete the kind cluster
+make up              # check the prerequisites, create the cluster, install everything
+make preflight       # only check the prerequisites
+make smoke           # check the running cluster
+make port-forward    # ArgoCD, Grafana, Prometheus and the demo on localhost ports
+make rollout-status  # watch the demo Rollout in the terminal
+make rollout-ui      # Argo Rollouts dashboard on localhost:3100/rollouts
 make demo-image      # build the demo image and load it into kind
 make lint            # static checks: YAML, scripts, chart renders (no cluster)
-make rollout-status  # watch the demo Rollout in the terminal
-make rollout-ui      # Argo Rollouts dashboard on localhost:3100/rollouts`}</code>
+make down            # delete the kind cluster`}</code>
       </pre>
 
       <h2>Known limits</h2>
       <ul>
         <li>
           kind has no LoadBalancer, so ingress uses hostPort 80 and 443 on the
-          single node.
+          single node; <code>make port-forward</code> is the way in when those
+          ports are not reachable.
         </li>
         <li>
           Nothing is persisted. Prometheus and Grafana use{' '}

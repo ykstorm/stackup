@@ -1,8 +1,10 @@
 # kube-prometheus-stack
 
-Prometheus, Grafana, kube-state-metrics, node-exporter and the Prometheus operator, as one Helm release (`kps`) in the `monitoring` namespace. `scripts/bootstrap.sh` installs it, and the ArgoCD Application in `argocd/apps/kube-prometheus-stack.yaml` manages it from then on.
+Prometheus, Grafana, kube-state-metrics, node-exporter and the Prometheus operator, as one Helm release (`kps`) in the `monitoring` namespace. The `kube-prometheus-stack` Application in `argocd/apps/templates/kube-prometheus-stack.yaml` installs it with the pinned chart and this values file, in sync wave 1 and with server-side apply, since the operator's CRDs are larger than a client-side apply can store.
 
 ## Install by hand
+
+On a cluster without ArgoCD:
 
 ```sh
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
@@ -15,14 +17,15 @@ helm upgrade --install kps prometheus-community/kube-prometheus-stack \
   --wait --timeout 10m
 ```
 
-The release name `kps` matters. The demo chart's ServiceMonitor carries `release: kps`, and the ArgoCD Application sets `releaseName: kps` so it manages the objects this install created.
+The release name `kps` matters. The demo chart's ServiceMonitor carries `release: kps`, the Grafana Service is `kps-grafana`, and the ArgoCD Application sets `releaseName: kps`.
 
 ## Access
 
 | Where | What |
 |---|---|
 | https://grafana.localtest.me | Grafana. Log in as `admin` / `prom-operator`. |
-| `kubectl -n monitoring port-forward svc/prometheus-operated 9090:9090` | The Prometheus UI, including `/targets` |
+| `make port-forward`, then http://localhost:3000 | Grafana through `svc/kps-grafana` port 80 |
+| `make port-forward`, then http://localhost:9090 | The Prometheus UI (`svc/prometheus-operated` port 9090), including `/targets` |
 
 `prom-operator` is the chart's well-known default password. It is acceptable on a local cluster that holds no real data. Anything shared should set `grafana.admin.existingSecret` to a Secret instead, for example one decrypted by Sealed Secrets.
 

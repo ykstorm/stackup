@@ -1,0 +1,5 @@
+# Where the child Applications read this repository from. argocd/root-app.yaml
+# passes the same two values, and scripts/bootstrap.sh replaces both when
+# STACKUP_REPO or STACKUP_REVISION is set.
+repoURL: https://github.com/ykstorm/stackup
+targetRevision: main

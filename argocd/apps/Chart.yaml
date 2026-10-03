@@ -1,0 +1,8 @@
+apiVersion: v2
+name: stackup-apps
+description: |-
+  The child Applications of the app-of-apps root (argocd/root-app.yaml), one
+  per component. The repository URL and revision are values, so the root can
+  point the whole tree at a fork, a branch or a commit.
+type: application
+version: 0.1.0

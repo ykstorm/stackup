@@ -1,0 +1,36 @@
+# ingress-nginx: the upstream chart (pinned) with this repository's values
+# file, infra/ingress-nginx/values.yaml, read through the $values source.
+#
+# Wave 0 of the root: its admission webhook validates every Ingress, so it has
+# to be serving before the charts in later waves create theirs.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ingress-nginx
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: stackup
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  sources:
+    - repoURL: https://kubernetes.github.io/ingress-nginx
+      chart: ingress-nginx
+      targetRevision: 4.15.1
+      helm:
+        valueFiles:
+          - $values/infra/ingress-nginx/values.yaml
+    - repoURL: {{ .Values.repoURL }}
+      targetRevision: {{ .Values.targetRevision }}
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ingress-nginx
+  ignoreDifferences:
+    {{- include "stackup.ignoreWebhookCaBundle" . | nindent 4 }}
+  syncPolicy:
+    {{- include "stackup.syncPolicy" . | nindent 4 }}
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

@@ -13,7 +13,7 @@ Documentation site: [ykstorm.github.io/stackup](https://ykstorm.github.io/stacku
 |---|---|---|
 | Cluster | kind | One Kubernetes node running as a Docker container |
 | Network | Calico | Pod networking and NetworkPolicy enforcement in both directions (kind's default CNI is turned off) |
-| GitOps | ArgoCD | A root Application syncs `argocd/apps/`, which defines six child Applications |
+| GitOps | ArgoCD | A root Application renders `argocd/apps/`, which defines six child Applications, and syncs them in waves |
 | Delivery | Argo Rollouts | Runs the demo's canary steps and its analysis gate |
 | Metrics | kube-prometheus-stack | Prometheus and Grafana |
 | Ingress | ingress-nginx | Serves `*.localtest.me` on ports 80 and 443 of the host |
@@ -29,17 +29,34 @@ The six child Applications are `argo-rollouts`, `cert-manager`, `demo`, `ingress
 - Docker, with at least 6 GB of memory available to it (Docker Desktop: Settings, Resources). Below about 4 GB the controllers crash-loop.
 - `kind`, `kubectl`, and `helm` 3.15 or newer.
 - The `kubectl-argo-rollouts` plugin, used by `make rollout-status` and `make rollout-ui`.
-- `git`, `bash` and `make`. On Windows, run from Git Bash or WSL; without `make`, run `bash scripts/bootstrap.sh`.
+- `git` and `bash`, plus `make` for the make targets. On Windows, see [Windows, WSL and macOS](#windows-wsl-and-macos).
 - Ports 80 and 443 free on the host. The kind node publishes them for ingress.
+- Network access to GitHub and the Helm chart repositories. ArgoCD installs the components from there.
+
+`make preflight` checks all of these and prints the install command for anything missing.
 
 ## Bring it up
 
 ```bash
 git clone https://github.com/ykstorm/stackup && cd stackup
-make up
+make up        # or ./setup.sh
 ```
 
-`make up` runs `scripts/bootstrap.sh`. It creates the kind cluster, installs Calico, then installs the platform charts one at a time and waits for each to be ready. It builds the demo image, loads it into kind, installs the demo chart, and finally applies `argocd/root-app.yaml`. From then on ArgoCD manages everything from git.
+`make up` runs `./setup.sh`, which runs `scripts/preflight.sh` and then `scripts/bootstrap.sh`. The bootstrap creates the kind cluster, installs Calico, creates the `app` namespace, installs ArgoCD (its CRDs first), builds the demo image and loads it into the node, and applies `argocd/root-app.yaml`. From there ArgoCD installs the other components from git in three sync waves: cert-manager and ingress-nginx, then kube-prometheus-stack, Argo Rollouts and Sealed Secrets, then the demo. The script waits until every Application is Synced and Healthy, then prints the addresses below.
+
+The first run pulls every image, so it is the slow one. Running `make up` again reuses the cluster.
+
+## Windows, WSL and macOS
+
+The scripts are bash and run the same way on Linux, macOS, WSL and Git Bash.
+
+- Linux and macOS: `make up`.
+- Windows: use WSL 2, with Docker Desktop's WSL integration turned on for the distribution or Docker Engine installed inside WSL. Clone the repository into the Linux file system (`~/stackup`, not `/mnt/c/...`), then `make up`. Git Bash with Docker Desktop works too: run `./setup.sh`, because Git for Windows does not include `make`.
+- PowerShell and cmd cannot run the scripts; `make` started from either stops with a message saying so.
+
+The `*.localtest.me` addresses need Docker to publish the kind node's ports 80 and 443 on the host. Docker Desktop and Docker Engine on Linux do. With Docker Engine inside WSL, Windows reaches those ports only through WSL's localhost forwarding; `make port-forward` serves the same UIs on localhost ports in every setup.
+
+[docs/troubleshooting.md](docs/troubleshooting.md) lists the errors seen on Windows and WSL and the fix for each.
 
 ## Open
 
@@ -57,15 +74,23 @@ Hostnames under `localtest.me` resolve to `127.0.0.1`, so there is nothing to ad
   curl -k https://demo.localtest.me/metrics
   ```
 
+If those addresses do not answer, `make port-forward` serves the same UIs on localhost: ArgoCD on http://localhost:8080, Grafana on http://localhost:3000, Prometheus on http://localhost:9090 and the demo on http://localhost:8081. `make smoke` checks the whole cluster from the command line.
+
 ## Ship a change through the canary
 
-ArgoCD tracks `main` of the repository named in `argocd/root-app.yaml` and `argocd/apps/*.yaml`, which is `ykstorm/stackup`. To deploy from git yourself, fork the repository and replace that URL with your fork's before running `make up`.
+ArgoCD syncs from the repository and branch in `argocd/root-app.yaml`: `ykstorm/stackup`, `main`. To deploy your own changes, fork the repository and point the cluster at the fork:
+
+```bash
+STACKUP_REPO=https://github.com/<you>/stackup make up
+```
+
+`STACKUP_REVISION` picks a branch, tag or commit instead of `main`. The bootstrap passes both to every child Application.
 
 1. Build the new image and load it into kind:
    ```bash
    make demo-image DEMO_IMAGE=stackup-demo:v2
    ```
-2. Set `image.tag: v2` in `helm/demo/values.yaml`, commit, and push.
+2. Set `image.tag: v2` in `helm/demo/values.yaml`, commit, and push to the branch ArgoCD tracks.
 3. ArgoCD picks up the commit (it polls every three minutes; Refresh in the UI is faster) and updates the Rollout.
 4. Watch it:
    ```bash
@@ -119,23 +144,32 @@ flowchart LR
     analysis -->|two failed measurements| abort[Abort: old version keeps serving]
 ```
 
-[docs/architecture.md](docs/architecture.md) covers the cluster, the ArgoCD tree, and the security settings. [docs/gitops.md](docs/gitops.md) covers the app-of-apps layout and the canary in detail.
+[docs/architecture.md](docs/architecture.md) covers the cluster, the ArgoCD tree, and the security settings. [docs/gitops.md](docs/gitops.md) covers the app-of-apps layout, the bootstrap, and the canary in detail.
 
 ## Makefile targets
 
 ```bash
 make help            # list targets
-make up              # create the cluster and install everything (scripts/bootstrap.sh)
-make down            # delete the kind cluster
-make demo-image      # build the demo image and load it into kind (DEMO_IMAGE=stackup-demo:v2 for a new tag)
-make lint            # static checks: YAML, shell scripts, chart renders against the schemas (no cluster)
+make up              # check the prerequisites, create the cluster and install everything (./setup.sh)
+make preflight       # only check the prerequisites
+make smoke           # check the running cluster: pods, ArgoCD apps, ArgoCD, Grafana, Prometheus, demo
+make port-forward    # ArgoCD, Grafana, Prometheus and the demo on localhost ports
 make rollout-status  # watch the demo Rollout in the terminal
 make rollout-ui      # Argo Rollouts dashboard on http://localhost:3100/rollouts
+make demo-image      # build the demo image and load it into kind (DEMO_IMAGE=stackup-demo:v2 for a new tag)
+make lint            # static checks: YAML, shell scripts, chart renders against the schemas (no cluster)
+make down            # delete the kind cluster
 ```
+
+Each target runs one script in `scripts/`, so they also work without `make`.
+
+## Troubleshooting
+
+[docs/troubleshooting.md](docs/troubleshooting.md) covers the errors seen so far, Windows and WSL in particular: line endings, the ApplicationSet CRD, `metadata.annotations: Too long`, `ImagePullBackOff` on the demo, unreachable `*.localtest.me` addresses, port-forward ports, and Applications that stay out of sync.
 
 ## Limits
 
-- kind has no LoadBalancer. Ingress uses hostPort 80 and 443 on the single node.
+- kind has no LoadBalancer. Ingress uses hostPort 80 and 443 on the single node; `make port-forward` is the way in when those ports are not reachable.
 - Nothing is persisted. Prometheus and Grafana use `emptyDir`, and `make down` deletes the cluster.
 - The Sealed Secrets controller creates a new key for each cluster, so anything sealed against one cluster will not decrypt on the next.
 - One node and one workload namespace. More tenants would need more NetworkPolicy and RBAC work.

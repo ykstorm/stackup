@@ -45,7 +45,9 @@ graph LR
     A3 -->|Rollout| AR[Argo Rollouts controller]
 ```
 
-`argocd/root-app.yaml` points at `argocd/apps/`, and every file there is an Application. Each one syncs automatically with prune and self-heal turned on, so git is the source of truth: a resource removed from git is removed from the cluster, and an edit made with `kubectl` is reverted on the next sync. [gitops.md](gitops.md) lists the source of each child.
+`argocd/root-app.yaml` renders `argocd/apps/`, a small Helm chart whose templates are the Applications. Each one syncs automatically with prune and self-heal turned on, so git is the source of truth: a resource removed from git is removed from the cluster, and an edit made with `kubectl` is reverted on the next sync. The children sync in three waves (cert-manager and ingress-nginx; kube-prometheus-stack, argo-rollouts and sealed-secrets; the demo), each wave waiting for the previous one to be Healthy. [gitops.md](gitops.md) lists the source of each child.
+
+`scripts/bootstrap.sh` installs only kind, Calico, the `app` namespace and ArgoCD, plus the demo image on the node; ArgoCD installs everything else. Each component has one owner.
 
 ## 3. The canary
 

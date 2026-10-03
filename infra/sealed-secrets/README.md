@@ -4,7 +4,7 @@ The Sealed Secrets controller lets encrypted Secret material live in git. The co
 
 ## How it is installed
 
-`scripts/bootstrap.sh` applies the upstream release manifest for `v0.27.1`, which creates the `sealed-secrets-controller` Deployment and Service in `kube-system`. The ArgoCD Application in `argocd/apps/sealed-secrets.yaml` points at the project's Helm chart instead.
+`controller.yaml` in this directory is the upstream release manifest for `v0.27.1`, unchanged apart from a header comment. The `sealed-secrets` Application in `argocd/apps/templates/sealed-secrets.yaml` applies it in sync wave 1; it creates the `sealed-secrets-controller` Deployment and Service in `kube-system`. The manifest is kept in the repository because the project's Helm repository index (`bitnami-labs.github.io/sealed-secrets/index.yaml`) returns 404, so an Application pointing at that chart cannot render. To upgrade, replace the file with the `controller.yaml` of a newer release.
 
 ## Verify
 

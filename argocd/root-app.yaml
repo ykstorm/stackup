@@ -1,14 +1,17 @@
-# app-of-apps root.
+# The app-of-apps root.
 #
-# A single Application that points at argocd/apps/ in this repo. Every
-# file there is itself an Application (one per platform component), so
-# ArgoCD reconciling `root` pulls in the whole tree. Apply it once after
-# ArgoCD is up:
+# One Application that renders argocd/apps, a small Helm chart in this
+# repository whose templates are the child Applications, one per component.
+# Reconciling `root` brings in the whole tree. The children carry sync waves,
+# and infra/argocd/values.yaml teaches ArgoCD to report a child's health, so
+# each wave waits for the previous one to be Healthy.
 #
-#   kubectl apply -f argocd/root-app.yaml
+# scripts/bootstrap.sh applies this file. When STACKUP_REPO or
+# STACKUP_REVISION is set it replaces the repository URL and `main` below,
+# in the source and in the values passed to the children alike.
 #
-# automated sync keeps the children in step with main; prune removes
-# resources dropped from git; selfHeal reverts out-of-band cluster edits.
+# Automated sync keeps the tree in step with git; prune removes what is
+# dropped from git; selfHeal reverts changes made outside git.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -20,10 +23,12 @@ spec:
   project: default
   source:
     repoURL: https://github.com/ykstorm/stackup
-    path: argocd/apps
     targetRevision: main
-    directory:
-      recurse: false
+    path: argocd/apps
+    helm:
+      valuesObject:
+        repoURL: https://github.com/ykstorm/stackup
+        targetRevision: main
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
@@ -31,5 +36,9 @@ spec:
     automated:
       prune: true
       selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

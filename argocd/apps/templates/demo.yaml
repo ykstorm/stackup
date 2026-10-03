@@ -1,0 +1,38 @@
+# The demo, the canary subject: helm/demo with values.dev.yaml, which renders
+# the Argo Rollout, its AnalysisTemplate, the NetworkPolicies, the Ingress and
+# the Grafana dashboard. Installed into `app`, the namespace bootstrap.sh
+# creates with the restricted Pod Security profile.
+#
+# Its image is built from apps/demo and loaded into the kind node by
+# bootstrap.sh before this Application exists; it is never pulled.
+#
+# Wave 2 of the root: it needs the Rollout CRD (argo-rollouts), the
+# ServiceMonitor CRD (kube-prometheus-stack), the ingress controller and the
+# ClusterIssuer from the earlier waves.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: demo
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: stackup
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ .Values.targetRevision }}
+    path: helm/demo
+    helm:
+      valueFiles:
+        - values.dev.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: app
+  syncPolicy:
+    {{- include "stackup.syncPolicy" . | nindent 4 }}
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
