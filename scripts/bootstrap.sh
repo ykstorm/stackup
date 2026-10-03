@@ -12,7 +12,6 @@
 #   3. apply Calico Installation CR, wait NODES Ready (CNI data-plane up)
 #   4. apply the `app` workload namespace (restricted PSS)
 #   5. install sealed-secrets controller, wait it Ready
-#   6. apply SealedSecrets (the `app` namespace now exists)
 #   7. install ingress-nginx / cert-manager / kube-prometheus-stack,
 #      wait each Available
 #   8. install Argo Rollouts + ArgoCD (wrapper charts), wait Available
@@ -91,22 +90,6 @@ kubectl apply -f "https://github.com/bitnami-labs/sealed-secrets/releases/downlo
 step "waiting for sealed-secrets controller Available"
 kubectl wait --for=condition=Available deployment/sealed-secrets-controller \
   -n kube-system --timeout=180s
-
-# --------------------------------------------------------------------- #
-# 6. SealedSecrets (namespace + controller now exist)
-# --------------------------------------------------------------------- #
-# NOTE: the committed SealedSecret blobs are bound to the previous
-# (namespace, name) and to a per-cluster controller key, so on a fresh
-# cluster they must be re-sealed (see the recipe in
-# helm/buyerchat/templates/sealed-secret.yaml). They protect only stub
-# values, so the demo workload does not depend on them.
-step "applying SealedSecrets into '$NAMESPACE'"
-# Rendered from the buyerchat chart's sealed-secret template (the only
-# SealedSecret in the repo). Non-fatal if it can't decrypt yet — the demo
-# workload needs no secret.
-helm template buyerchat helm/buyerchat -f helm/buyerchat/values.dev.yaml \
-  --show-only templates/sealed-secret.yaml -n "$NAMESPACE" \
-  | kubectl apply -f - || echo "    SealedSecret apply skipped (re-seal required on fresh cluster)"
 
 # --------------------------------------------------------------------- #
 # 7. foundation platform charts, each waited

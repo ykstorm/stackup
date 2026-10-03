@@ -14,9 +14,10 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install production deps first for layer caching.
+# Install production deps first for layer caching, at the versions in
+# package-lock.json.
 COPY package*.json ./
-RUN npm install --omit=dev
+RUN npm ci --omit=dev
 
 COPY server.js ./
 

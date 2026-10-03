@@ -128,8 +128,7 @@ make help            # list targets
 make up              # create the cluster and install everything (scripts/bootstrap.sh)
 make down            # delete the kind cluster
 make demo-image      # build the demo image and load it into kind (DEMO_IMAGE=stackup-demo:v2 for a new tag)
-make smoke           # render and validate the charts (no cluster needed)
-make lint            # parse every YAML file and lint the Helm charts
+make lint            # static checks: YAML, shell scripts, chart renders against the schemas (no cluster)
 make rollout-status  # watch the demo Rollout in the terminal
 make rollout-ui      # Argo Rollouts dashboard on http://localhost:3100/rollouts
 ```

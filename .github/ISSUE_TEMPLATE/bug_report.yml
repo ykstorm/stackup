@@ -1,38 +1,42 @@
 name: Bug report
-description: Report something that's broken
-title: "[Bug] "
+description: Something in make up, the charts or the docs does not work.
 labels: [bug]
 body:
-  - type: markdown
+  - type: textarea
+    id: what-happened
     attributes:
-      value: |
-        ## Bug description
-
-        Clear and concise description of the bug.
-
-        ## Steps to reproduce
-
-        1. `make up`
+      label: What happened
+      description: The command you ran and the error or behavior you saw.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. make up
         2. ...
-        3. 
-
-        ## Expected behavior
-
-        What should happen.
-
-        ## Actual behavior
-
-        What actually happens.
-
-        ## Environment
-
-        - OS: 
-        - Docker version: 
-        - kind version: 
-        - helm version: 
-
-        ## Relevant logs
-
-        ```
-        (paste logs here)
-        ```
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: >-
+        OS (and WSL or Git Bash on Windows), Docker version and memory, and the
+        versions of kind, kubectl and helm. The output of scripts/preflight.sh
+        covers most of this.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >-
+        The failing step of make up, and for a stuck component the output of
+        kubectl get applications -n argocd and kubectl get pods -A.
+      render: shell

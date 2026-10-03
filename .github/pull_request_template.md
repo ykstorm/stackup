@@ -1,16 +1,9 @@
-## Description
-<!-- Briefly describe the changes in this PR -->
+## What changed and why
 
-## Type of change
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Breaking change
-- [ ] Documentation update
+## How it was checked
 
-## Checklist
-- [ ] I have tested my changes
-- [ ] I have updated documentation if needed
-- [ ] My code follows the project's code style
+- [ ] `make lint` passes
+- [ ] For changes to the bootstrap, the charts or `argocd/`: `make up` and `make smoke` on a fresh cluster (say which OS)
+- [ ] Docs updated where behavior changed
 
 ## Related issue
-<!-- Link to related issue (e.g., "Closes #123") -->

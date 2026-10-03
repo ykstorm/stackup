@@ -96,8 +96,7 @@ make rollout-status                           # watch the canary`}</code>
 make up              # create the cluster and install everything
 make down            # delete the kind cluster
 make demo-image      # build the demo image and load it into kind
-make smoke           # render and validate the charts (no cluster needed)
-make lint            # parse every YAML file and lint the Helm charts
+make lint            # static checks: YAML, scripts, chart renders (no cluster)
 make rollout-status  # watch the demo Rollout in the terminal
 make rollout-ui      # Argo Rollouts dashboard on localhost:3100/rollouts`}</code>
       </pre>

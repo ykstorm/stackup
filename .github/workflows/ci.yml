@@ -13,98 +13,38 @@ concurrency:
 
 jobs:
 
-  lint:
-    name: Lint manifests + helm
+  static:
+    name: Static checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install kubeconform + helm
-        run: |
-          curl -sSL -o /tmp/kubeconform.tar.gz https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
-          tar -xzf /tmp/kubeconform.tar.gz -C /tmp/
-          chmod +x /tmp/kubeconform && sudo mv /tmp/kubeconform /usr/local/bin/kubeconform
-          curl -fsSL -o /tmp/helm.tar.gz https://get.helm.sh/helm-v3.15.0-linux-amd64.tar.gz
-          tar -xzf /tmp/helm.tar.gz -C /tmp/
-          chmod +x /tmp/linux-amd64/helm && sudo mv /tmp/linux-amd64/helm /usr/local/bin/helm
+      - uses: ./.github/actions/setup-k8s-tools
 
-      - name: Validate raw manifests
-        run: find manifests/ -name '*.yaml' -print0 | xargs -0 kubeconform -strict -summary
+      # The same script `make lint` runs locally. LINT_STRICT=1 turns a
+      # missing tool into a failure instead of a skipped check.
+      - name: make lint
+        env:
+          LINT_STRICT: "1"
+        run: make lint
 
-      - name: Lint helm chart
-        run: helm lint helm/buyerchat
-
-      - name: Template helm + validate
-        run: helm template helm/buyerchat | kubeconform -strict -summary -ignore-missing-schemas
-
-  smoke:
-    name: Smoke (helm render + validate)
+  demo-app:
+    name: Demo app
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install kubeconform + helm
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/demo/package-lock.json
+      - name: npm ci and npm test
+        working-directory: apps/demo
         run: |
-          curl -sSL -o /tmp/kubeconform.tar.gz https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
-          tar -xzf /tmp/kubeconform.tar.gz -C /tmp/
-          chmod +x /tmp/kubeconform && sudo mv /tmp/kubeconform /usr/local/bin/kubeconform
-          curl -fsSL -o /tmp/helm.tar.gz https://get.helm.sh/helm-v3.15.0-linux-amd64.tar.gz
-          tar -xzf /tmp/helm.tar.gz -C /tmp/
-          chmod +x /tmp/linux-amd64/helm && sudo mv /tmp/linux-amd64/helm /usr/local/bin/helm
-
-      - name: Helm lint all charts
-        run: |
-          for chart in helm/*; do
-            [ -d "$chart" ] && helm lint "$chart"
-          done
-
-      - name: Render helm templates and validate
-        run: |
-          for chart in helm/*; do
-            [ -d "$chart" ] && helm template "$chart" | kubeconform -strict -summary -ignore-missing-schemas
-          done
-
-      - name: Validate raw manifests
-        run: find manifests/ -name '*.yaml' -print0 | xargs -0 kubeconform -strict -summary -ignore-missing-schemas
-
-  gitops:
-    name: GitOps (rollout + app-of-apps render)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install kubeconform + helm
-        run: |
-          curl -sSL -o /tmp/kubeconform.tar.gz https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
-          tar -xzf /tmp/kubeconform.tar.gz -C /tmp/
-          chmod +x /tmp/kubeconform && sudo mv /tmp/kubeconform /usr/local/bin/kubeconform
-          curl -fsSL -o /tmp/helm.tar.gz https://get.helm.sh/helm-v3.15.0-linux-amd64.tar.gz
-          tar -xzf /tmp/helm.tar.gz -C /tmp/
-          chmod +x /tmp/linux-amd64/helm && sudo mv /tmp/linux-amd64/helm /usr/local/bin/helm
-
-      - name: Lint + render infra wrapper charts (argo-rollouts, argocd)
-        # These pin the upstream chart via Chart.yaml dependencies; build
-        # the dependency before lint/template. -ignore-missing-schemas
-        # because the upstream charts ship CRDs (Rollout, Application).
-        run: |
-          # Both wrapper charts pin upstream charts from the argo-helm repo;
-          # register it so `helm dependency build` can resolve them.
-          helm repo add argo https://argoproj.github.io/argo-helm
-          helm repo update
-          for chart in infra/argo-rollouts infra/argocd; do
-            helm dependency build "$chart"
-            helm lint "$chart"
-            helm template "$chart" | kubeconform -strict -summary -ignore-missing-schemas
-          done
-
-      - name: Render rollout-enabled buyerchat + validate
-        # values.dev.yaml sets rollout.enabled=true, so this renders the
-        # Argo Rollout + AnalysisTemplate path (CRD-typed → needs
-        # -ignore-missing-schemas).
-        run: helm template helm/buyerchat -f helm/buyerchat/values.dev.yaml | kubeconform -strict -summary -ignore-missing-schemas
-
-      - name: Validate app-of-apps manifests
-        run: kubeconform -strict -summary -ignore-missing-schemas argocd/root-app.yaml argocd/apps/*.yaml
+          npm ci
+          npm test
+      - name: Build the image
+        run: docker build -t stackup-demo:ci apps/demo
 
   build-docs:
     name: Build docs site

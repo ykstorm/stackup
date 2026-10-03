@@ -89,7 +89,7 @@ The demo app (`apps/demo/server.js`) uses prom-client. Every response increments
 
 The chart's ServiceMonitor has the Prometheus operator from kube-prometheus-stack (release `kps`) scrape `/metrics` every 30 seconds. Grafana reads from that Prometheus and comes with the chart's standard Kubernetes dashboards. There is no alerting and no log or trace pipeline: the stack collects metrics only.
 
-The demo chart adds one dashboard, `helm/demo/dashboards/canary.json` (uid `stackup-canary`), as a ConfigMap that Grafana's sidecar loads. Its top panel runs the gate's query against the 0.95 line, and `make smoke` fails if the two drift apart. The other panels show requests by status code, 5xx responses by pod, and ready pods per ReplicaSet (from kube-state-metrics), so a canary step or an abort is visible as one ReplicaSet gaining pods and another losing them.
+The demo chart adds one dashboard, `helm/demo/dashboards/canary.json` (uid `stackup-canary`), as a ConfigMap that Grafana's sidecar loads. Its top panel runs the gate's query against the 0.95 line, and `make lint` fails if the two drift apart. The other panels show requests by status code, 5xx responses by pod, and ready pods per ReplicaSet (from kube-state-metrics), so a canary step or an abort is visible as one ReplicaSet gaining pods and another losing them.
 
 Prometheus and Grafana use `emptyDir` volumes, so their data does not survive a pod restart or `make down`.
 
