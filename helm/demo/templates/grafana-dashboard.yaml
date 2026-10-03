@@ -1,0 +1,19 @@
+{{- if .Values.serviceMonitor.enabled }}
+# Grafana dashboard for the canary. The kube-prometheus-stack Grafana
+# sidecar loads every ConfigMap labelled grafana_dashboard: "1", in any
+# namespace (infra/kube-prometheus-stack/values.yaml). Gated on the
+# ServiceMonitor: without it Prometheus has no demo data to chart.
+#
+# The success-rate panel runs the same query as the AnalysisTemplate;
+# scripts/smoke-test.sh fails if the two drift apart.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "demo.fullname" . }}-grafana-dashboard
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+    grafana_dashboard: "1"
+data:
+  stackup-canary.json: |-
+{{ .Files.Get "dashboards/canary.json" | indent 4 }}
+{{- end }}

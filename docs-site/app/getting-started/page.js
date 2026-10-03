@@ -23,7 +23,7 @@ export default function GettingStarted() {
         </li>
         <li>
           The <code>kubectl-argo-rollouts</code> plugin, used by{' '}
-          <code>make rollout-status</code>.
+          <code>make rollout-status</code> and <code>make rollout-ui</code>.
         </li>
         <li>
           <code>git</code>, <code>bash</code> and <code>make</code>. On
@@ -56,6 +56,8 @@ make up`}</code>
         <li>
           <strong>https://grafana.localtest.me</strong>: log in as{' '}
           <code>admin</code> / <code>prom-operator</code>, the chart default.
+          The canary dashboard is at{' '}
+          <strong>https://grafana.localtest.me/d/stackup-canary</strong>.
         </li>
         <li>
           <strong>https://argocd.localtest.me</strong>: log in as{' '}
@@ -64,7 +66,9 @@ make up`}</code>
           <code>argocd</code> namespace.
         </li>
         <li>
-          The rollout, in the terminal: <code>make rollout-status</code>.
+          The rollout, in the terminal: <code>make rollout-status</code>. In a
+          browser: <code>make rollout-ui</code> serves the Argo Rollouts
+          dashboard on <code>http://localhost:3100/rollouts</code>.
         </li>
         <li>
           The <code>demo</code> service has no ingress yet. Reach it with{' '}
@@ -95,7 +99,8 @@ make down            # delete the kind cluster
 make demo-image      # build the demo image and load it into kind
 make smoke           # render and validate the charts (no cluster needed)
 make lint            # parse every YAML file and lint the Helm charts
-make rollout-status  # watch the demo Rollout in the terminal`}</code>
+make rollout-status  # watch the demo Rollout in the terminal
+make rollout-ui      # Argo Rollouts dashboard on localhost:3100/rollouts`}</code>
       </pre>
 
       <h2>Known limits</h2>

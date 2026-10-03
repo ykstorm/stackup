@@ -32,7 +32,7 @@ By default the operator only adopts ServiceMonitor, PodMonitor, PrometheusRule a
 
 ## Storage
 
-Prometheus and Grafana use `emptyDir` volumes. A pod restart or `make down` loses every metric and any change made in the Grafana UI. Dashboards come back on their own, because Grafana loads them from ConfigMaps labelled `grafana_dashboard: "1"` rather than from its own database. A long-lived install would add `prometheus.prometheusSpec.storageSpec` and `grafana.persistence` backed by a StorageClass.
+Prometheus and Grafana use `emptyDir` volumes. A pod restart or `make down` loses every metric and any change made in the Grafana UI. Dashboards come back on their own, because Grafana loads them from ConfigMaps labelled `grafana_dashboard: "1"` rather than from its own database. The demo chart ships one of these: the canary dashboard (`helm/demo/dashboards/canary.json`, uid `stackup-canary`). A long-lived install would add `prometheus.prometheusSpec.storageSpec` and `grafana.persistence` backed by a StorageClass.
 
 The default scrape interval is 30 seconds; a ServiceMonitor can override it.
 

@@ -1,4 +1,4 @@
-.PHONY: up down smoke lint rollout-status demo-image help
+.PHONY: up down smoke lint rollout-status rollout-ui demo-image help
 
 KIND_CLUSTER := stackup
 HELM_CHART := helm/demo
@@ -15,8 +15,9 @@ help:
 	@echo "  make smoke          Run smoke tests (helm render + validate; no cluster needed)"
 	@echo "  make lint           Lint all YAML files + Helm charts"
 	@echo "  make rollout-status Watch the demo Argo Rollout canary progress"
+	@echo "  make rollout-ui     Serve the Argo Rollouts dashboard on http://localhost:3100/rollouts"
 	@echo ""
-	@echo "Prerequisites: docker, kind, helm >=3.15, kubectl, git, bash"
+	@echo "Prerequisites: docker, kind, helm >=3.15, kubectl, the kubectl-argo-rollouts plugin, git, bash"
 
 # `up` is a thin wrapper over scripts/bootstrap.sh. The script owns the
 # ordering + per-step `kubectl wait` gates (kind -> Calico -> namespace ->
@@ -59,3 +60,9 @@ lint:
 
 rollout-status:
 	kubectl argo rollouts get rollout $(ROLLOUT) -n $(NAMESPACE) --watch
+
+# The dashboard is served by the kubectl plugin on this machine and reads
+# Rollout objects through the current kubeconfig context; nothing extra
+# runs in the cluster. Ctrl-C stops it.
+rollout-ui:
+	kubectl argo rollouts dashboard -n $(NAMESPACE)

@@ -80,7 +80,8 @@ grafana:
       cert-manager.io/cluster-issuer: selfsigned
 
   # The dashboard sidecar loads every ConfigMap labelled
-  # grafana_dashboard: "1". The chart's own dashboards use it.
+  # grafana_dashboard: "1". The chart's own dashboards use it, and so does
+  # the demo chart's canary dashboard (helm/demo/dashboards/canary.json).
   sidecar:
     dashboards:
       enabled: true

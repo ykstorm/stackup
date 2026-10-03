@@ -1,12 +1,28 @@
+/* GitHub dark by default; GitHub light when the reader's system prefers it. */
 :root {
+  color-scheme: dark;
   --bg: #0d1117;
   --panel: #161b22;
   --border: #30363d;
   --text: #e6edf3;
   --muted: #9da7b3;
   --accent: #2f81f7;
-  --accent-soft: #1f6feb33;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --measure: 68ch;
+  --page: 960px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg: #ffffff;
+    --panel: #f6f8fa;
+    --border: #d0d7de;
+    --text: #1f2328;
+    --muted: #59636e;
+    --accent: #0969da;
+  }
 }
 
 * {
@@ -19,7 +35,8 @@ body {
   padding: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--sans);
+  font-size: 16px;
   line-height: 1.6;
 }
 
@@ -32,13 +49,21 @@ a:hover {
   text-decoration: underline;
 }
 
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Header and footer */
+
 .site-header {
   border-bottom: 1px solid var(--border);
   background: var(--panel);
 }
 
 .site-header .inner {
-  max-width: 880px;
+  max-width: var(--page);
   margin: 0 auto;
   padding: 14px 24px;
   display: flex;
@@ -48,7 +73,7 @@ a:hover {
 }
 
 .brand {
-  font-weight: 700;
+  font-weight: 600;
   font-size: 18px;
   color: var(--text);
 }
@@ -59,7 +84,8 @@ a:hover {
 
 .nav {
   display: flex;
-  gap: 18px;
+  flex-wrap: wrap;
+  gap: 6px 18px;
   font-size: 14px;
 }
 
@@ -73,27 +99,57 @@ a:hover {
 }
 
 main {
-  max-width: 880px;
+  max-width: var(--page);
   margin: 0 auto;
   padding: 40px 24px 80px;
 }
 
+footer {
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 13px;
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: 24px;
+}
+
+/* Type. Prose keeps a readable measure inside the wider page. */
+
 h1 {
-  font-size: 30px;
-  line-height: 1.2;
-  margin: 0 0 8px;
+  font-size: 36px;
+  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0 0 14px;
 }
 
 h2 {
-  font-size: 21px;
-  margin: 36px 0 12px;
-  padding-top: 8px;
+  font-size: 22px;
+  line-height: 1.3;
+  font-weight: 600;
+  margin: 48px 0 14px;
+  padding-top: 14px;
   border-top: 1px solid var(--border);
 }
 
 h3 {
   font-size: 17px;
+  line-height: 1.35;
+  font-weight: 600;
   margin: 24px 0 8px;
+}
+
+main > p,
+main > ul,
+main > ol {
+  max-width: var(--measure);
+}
+
+.hero {
+  font-size: 19px;
+  line-height: 1.55;
+  max-width: 62ch;
+  margin: 0;
 }
 
 .lede {
@@ -102,9 +158,25 @@ h3 {
   margin: 0 0 24px;
 }
 
+.note {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+ul,
+ol {
+  padding-left: 22px;
+}
+
+li {
+  margin: 4px 0;
+}
+
+/* Code */
+
 code {
   font-family: var(--mono);
-  font-size: 0.9em;
+  font-size: 0.875em;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -114,15 +186,126 @@ code {
 pre {
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 14px 16px;
   overflow-x: auto;
+  line-height: 1.5;
 }
 
 pre code {
   background: none;
   border: none;
   padding: 0;
+  font-size: 14px;
+}
+
+/* Run it: the commands beside what they need */
+
+.run {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 8px 32px;
+  align-items: start;
+}
+
+.run pre {
+  margin-top: 0;
+}
+
+.run h3 {
+  margin-top: 0;
+}
+
+.prereqs {
+  margin: 0;
+  font-size: 15px;
+}
+
+/* The canary diagram */
+
+figure {
+  margin: 0;
+}
+
+.flow {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 20px 16px 16px;
+}
+
+.flow-scroll {
+  overflow-x: auto;
+}
+
+.canary-flow {
+  display: block;
+  width: 100%;
+  min-width: 720px;
+  height: auto;
+  color: var(--text);
+}
+
+.canary-flow text {
+  font-family: var(--mono);
+  font-size: 14px;
+}
+
+.canary-flow .sub {
+  font-size: 12px;
+  fill-opacity: 0.72;
+}
+
+figcaption {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+figcaption code {
+  overflow-wrap: anywhere;
+}
+
+/* What you can open: three views of the same cluster, in one box */
+
+.opens {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 16px 0 8px;
+}
+
+.open {
+  padding: 16px 18px;
+}
+
+.open + .open {
+  border-left: 1px solid var(--border);
+}
+
+.open h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.open p {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.open .addr {
+  font-family: var(--mono);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+/* Tables */
+
+.table-scroll {
+  overflow-x: auto;
 }
 
 table {
@@ -142,57 +325,41 @@ td {
 
 th {
   background: var(--panel);
+  font-weight: 600;
 }
 
-ul,
-ol {
-  padding-left: 22px;
+/* Read next */
+
+.next {
+  list-style: none;
+  padding: 0;
 }
 
-li {
-  margin: 4px 0;
+.next li {
+  margin: 10px 0;
 }
 
-.cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  margin: 24px 0;
+.next a {
+  font-weight: 600;
 }
 
-.card {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 18px;
-  background: var(--panel);
-}
+@media (max-width: 760px) {
+  /* minmax(0, 1fr), not 1fr: a long command line must scroll inside its
+     pre rather than widen the column past the page. */
+  .run {
+    grid-template-columns: minmax(0, 1fr);
+  }
 
-.card h3 {
-  margin-top: 0;
-}
+  .opens {
+    grid-template-columns: minmax(0, 1fr);
+  }
 
-.card p {
-  color: var(--muted);
-  font-size: 14px;
-  margin: 8px 0 0;
-}
+  .open + .open {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
 
-.tag {
-  display: inline-block;
-  font-size: 12px;
-  font-family: var(--mono);
-  background: var(--accent-soft);
-  color: var(--accent);
-  border-radius: 4px;
-  padding: 2px 8px;
-  margin-bottom: 16px;
-}
-
-footer {
-  border-top: 1px solid var(--border);
-  color: var(--muted);
-  font-size: 13px;
-  max-width: 880px;
-  margin: 0 auto;
-  padding: 24px;
+  h1 {
+    font-size: 30px;
+  }
 }

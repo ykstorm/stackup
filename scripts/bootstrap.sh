@@ -181,8 +181,10 @@ kubectl wait --for=jsonpath='{.status.sync.status}'=Synced \
 # --------------------------------------------------------------------- #
 step "cluster ready"
 echo ""
-echo "Add to /etc/hosts (Windows: C:\\Windows\\System32\\drivers\\etc\\hosts):"
-echo "  127.0.0.1 demo.localtest.me grafana.localtest.me argocd.localtest.me prometheus.localtest.me"
+echo "localtest.me resolves to 127.0.0.1; no hosts-file entries are needed."
+echo "  Grafana:           https://grafana.localtest.me (admin / prom-operator)"
+echo "  Canary dashboard:  https://grafana.localtest.me/d/stackup-canary"
+echo "  ArgoCD:            https://argocd.localtest.me (admin; password in secret argocd-initial-admin-secret)"
 echo ""
-echo "Watch the canary:  kubectl argo rollouts get rollout demo -n $NAMESPACE --watch"
+echo "Watch the canary:  make rollout-status   (or make rollout-ui for http://localhost:3100/rollouts)"
 echo "Demo metrics:      kubectl -n $NAMESPACE port-forward svc/demo 3000:3000 then curl localhost:3000/metrics"

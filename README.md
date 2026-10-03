@@ -28,7 +28,7 @@ The six child Applications are `argo-rollouts`, `cert-manager`, `demo`, `ingress
 
 - Docker, with at least 6 GB of memory available to it (Docker Desktop: Settings, Resources). Below about 4 GB the controllers crash-loop.
 - `kind`, `kubectl`, and `helm` 3.15 or newer.
-- The `kubectl-argo-rollouts` plugin, used by `make rollout-status`.
+- The `kubectl-argo-rollouts` plugin, used by `make rollout-status` and `make rollout-ui`.
 - `git`, `bash` and `make`. On Windows, run from Git Bash or WSL; without `make`, run `bash scripts/bootstrap.sh`.
 - Ports 80 and 443 free on the host. The kind node publishes them for ingress.
 
@@ -46,11 +46,12 @@ make up
 Hostnames under `localtest.me` resolve to `127.0.0.1`, so there is nothing to add to a hosts file. Certificates come from a self-signed issuer, so the browser warns once per host.
 
 - Grafana: [https://grafana.localtest.me](https://grafana.localtest.me). Log in as `admin` / `prom-operator` (the chart's default; this cluster holds no real data).
+- The canary dashboard: [https://grafana.localtest.me/d/stackup-canary](https://grafana.localtest.me/d/stackup-canary). It ships with the demo chart (`helm/demo/dashboards/canary.json`) and shows the gate's success-rate query against the 0.95 line, requests by status code, 5xx responses by pod, and ready pods per ReplicaSet.
 - ArgoCD: [https://argocd.localtest.me](https://argocd.localtest.me). Log in as `admin`; the password is in a Secret:
   ```bash
   kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
   ```
-- The rollout, in the terminal: `make rollout-status`.
+- The rollout, in the terminal: `make rollout-status`. In a browser: `make rollout-ui`, which serves the Argo Rollouts dashboard on [http://localhost:3100/rollouts](http://localhost:3100/rollouts) from your machine.
 - The demo itself has no ingress yet. Port-forward to it:
   ```bash
   kubectl -n app port-forward svc/demo 3000:3000
@@ -131,6 +132,7 @@ make demo-image      # build the demo image and load it into kind (DEMO_IMAGE=st
 make smoke           # render and validate the charts (no cluster needed)
 make lint            # parse every YAML file and lint the Helm charts
 make rollout-status  # watch the demo Rollout in the terminal
+make rollout-ui      # Argo Rollouts dashboard on http://localhost:3100/rollouts
 ```
 
 ## Limits
