@@ -47,14 +47,14 @@ smoke:
 lint:
 	@echo "=== Linting YAML files ==="
 	@find . -name "*.yaml" -o -name "*.yml" | grep -v node_modules | while read f; do \
-		python3 -c "import yaml; yaml.safe_load(open('$$f'))" 2>/dev/null && echo "✓ $$f" || echo "✗ $$f: YAML parse error"; \
+		python3 -c "import yaml; yaml.safe_load(open('$$f'))" 2>/dev/null && echo "ok   $$f" || echo "FAIL $$f: YAML parse error"; \
 	done || true
 
 	@echo ""
 	@echo "=== Helm lint ==="
 	@for chart in helm/demo helm/buyerchat; do \
-		helm lint $$chart --quiet && echo "✓ helm lint $$chart passed" || echo "✗ helm lint $$chart failed"; \
-		helm template $$(basename $$chart) $$chart > /dev/null 2>&1 && echo "✓ helm template $$chart passed" || echo "✗ helm template $$chart failed"; \
+		helm lint $$chart --quiet && echo "ok   helm lint $$chart" || echo "FAIL helm lint $$chart"; \
+		helm template $$(basename $$chart) $$chart > /dev/null 2>&1 && echo "ok   helm template $$chart" || echo "FAIL helm template $$chart"; \
 	done
 
 rollout-status:

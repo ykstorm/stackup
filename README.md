@@ -1,136 +1,146 @@
 # Stackup
 
-**Kubernetes on your laptop. ArgoCD + Argo Rollouts + Prometheus + Grafana. `make up` in ~12–15 minutes. Free.**
+Stackup brings up a single-node Kubernetes cluster on a laptop with one command. kind runs the cluster inside Docker, and ArgoCD keeps it in step with this repository. A small demo service ships through an Argo Rollouts canary: each new version starts on a share of the pods while Prometheus checks the service's HTTP success rate, and the rollout either continues to 100% or rolls back on its own.
 
 [![CI](https://github.com/ykstorm/stackup/actions/workflows/ci.yml/badge.svg)](https://github.com/ykstorm/stackup/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
----
+Documentation site: [ykstorm.github.io/stackup](https://ykstorm.github.io/stackup/) (built from `docs-site/`).
 
-## Why Stackup
+## What gets installed
 
-Managed Kubernetes costs $200+/month minimum on cloud providers. Stackup runs the full production stack on kind, on your laptop, for free.
-
-What "full production stack" means: a real ArgoCD app-of-apps with 6 child applications, Argo Rollouts canary progressive delivery, Prometheus + Grafana observability, cert-manager TLS, Sealed Secrets encrypted in git, Calico NetworkPolicy enforcement, and Pod Security Standards `restricted` on every workload namespace.
-
-The bootstrapped canary subject is a small `demo` service (Express + prom-client). The cluster is the point — not the app.
-
----
-
-## What's in the box
-
-| Layer | Component | What it does |
+| Layer | Component | What it does here |
 |---|---|---|
-| **Cluster** | kind on Docker | single-node K8s in containers |
-| **CNI** | Calico | NetworkPolicy enforcement |
-| **GitOps** | ArgoCD (app-of-apps) | One root app manages 6 children; automated sync + prune + self-heal |
-| **Progressive delivery** | Argo Rollouts | Canary 25→50→75→100%, success-rate analysis gate at 25% with auto-rollback |
-| **Ingress** | ingress-nginx | TLS termination, hostPort 80/443 |
-| **TLS** | cert-manager | Self-signed ClusterIssuer (swap to ACME in one line for prod) |
-| **Secrets** | Sealed Secrets | Encrypted secrets in git, decrypted in-cluster |
-| **Metrics** | kube-prometheus-stack | Prometheus + Alertmanager + Grafana |
-| **Workload demo** | demo Helm chart (helm/demo) | Express service that exports `http_requests_total` — the canary subject |
-| **Hardening** | PSS `restricted` + NetworkPolicy `default-deny` | Zero-trust on workload namespaces |
+| Cluster | kind | One Kubernetes node running as a Docker container |
+| Network | Calico | Pod networking and NetworkPolicy enforcement in both directions (kind's default CNI is turned off) |
+| GitOps | ArgoCD | A root Application syncs `argocd/apps/`, which defines six child Applications |
+| Delivery | Argo Rollouts | Runs the demo's canary steps and its analysis gate |
+| Metrics | kube-prometheus-stack | Prometheus and Grafana |
+| Ingress | ingress-nginx | Serves `*.localtest.me` on ports 80 and 443 of the host |
+| TLS | cert-manager | Issues certificates from a self-signed ClusterIssuer |
+| Secrets | Sealed Secrets | Controller that decrypts SealedSecret resources inside the cluster |
+| Pod security | Pod Security Admission | The `app` namespace enforces the `restricted` profile |
+| Workload | `demo` (`helm/demo`) | Express service that counts every request in `http_requests_total`; the subject of the canary |
 
-### Roadmap (not installed yet)
+The six child Applications are `argo-rollouts`, `cert-manager`, `demo`, `ingress-nginx`, `kube-prometheus-stack` and `sealed-secrets`.
 
-| Layer | Component | What it would do |
-|---|---|---|
-| **Logs** | Loki + Promtail | Pod stdout → Loki → Grafana Explore |
-| **Traces** | Tempo | OTLP traces from workloads |
+## Prerequisites
 
----
+- Docker, with at least 6 GB of memory available to it (Docker Desktop: Settings, Resources). Below about 4 GB the controllers crash-loop.
+- `kind`, `kubectl`, and `helm` 3.15 or newer.
+- The `kubectl-argo-rollouts` plugin, used by `make rollout-status`.
+- `git`, `bash` and `make`. On Windows, run from Git Bash or WSL; without `make`, run `bash scripts/bootstrap.sh`.
+- Ports 80 and 443 free on the host. The kind node publishes them for ingress.
 
-## Quickstart
-
-**Prerequisites:** Docker, `kind`, `kubectl`, `helm`. Give Docker **at least 6 GB of memory** (Docker Desktop → Settings → Resources). The full stack — Calico, kube-prometheus-stack, ArgoCD, and Argo Rollouts on one node — will start to crash-loop its controllers below ~4 GB.
+## Bring it up
 
 ```bash
 git clone https://github.com/ykstorm/stackup && cd stackup
 make up
 ```
 
-The ingress hosts use `localtest.me`, which resolves to `127.0.0.1` — no `/etc/hosts` editing. Open:
+`make up` runs `scripts/bootstrap.sh`. It creates the kind cluster, installs Calico, then installs the platform charts one at a time and waits for each to be ready. It builds the demo image, loads it into kind, installs the demo chart, and finally applies `argocd/root-app.yaml`. From then on ArgoCD manages everything from git.
 
-- **[https://grafana.localtest.me](https://grafana.localtest.me)** — RED metrics from Prometheus (logs/traces are roadmap)
-- **[https://argocd.localtest.me](https://argocd.localtest.me)** — GitOps tree of 6 child apps
+## Open
 
-The `demo` workload has no ingress. Reach it by port-forward:
+Hostnames under `localtest.me` resolve to `127.0.0.1`, so there is nothing to add to a hosts file. Certificates come from a self-signed issuer, so the browser warns once per host.
 
-```bash
-kubectl -n app port-forward svc/demo 3000:3000
-curl localhost:3000/metrics   # shows http_requests_total
+- Grafana: [https://grafana.localtest.me](https://grafana.localtest.me). Log in as `admin` / `prom-operator` (the chart's default; this cluster holds no real data).
+- ArgoCD: [https://argocd.localtest.me](https://argocd.localtest.me). Log in as `admin`; the password is in a Secret:
+  ```bash
+  kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
+  ```
+- The rollout, in the terminal: `make rollout-status`.
+- The demo itself has no ingress yet. Port-forward to it:
+  ```bash
+  kubectl -n app port-forward svc/demo 3000:3000
+  curl localhost:3000/metrics   # includes http_requests_total
+  ```
+
+## Ship a change through the canary
+
+ArgoCD tracks `main` of the repository named in `argocd/root-app.yaml` and `argocd/apps/*.yaml`, which is `ykstorm/stackup`. To deploy from git yourself, fork the repository and replace that URL with your fork's before running `make up`.
+
+1. Build the new image and load it into kind:
+   ```bash
+   make demo-image DEMO_IMAGE=stackup-demo:v2
+   ```
+2. Set `image.tag: v2` in `helm/demo/values.yaml`, commit, and push.
+3. ArgoCD picks up the commit (it polls every three minutes; Refresh in the UI is faster) and updates the Rollout.
+4. Watch it:
+   ```bash
+   make rollout-status   # kubectl argo rollouts get rollout demo -n app --watch
+   ```
+
+The steps come from `helm/demo/templates/rollout.yaml`:
+
+```
+setWeight 25 -> pause 30s -> analysis -> setWeight 50 -> pause 30s
+             -> setWeight 75 -> pause 30s -> setWeight 100
 ```
 
----
+There is no traffic router, so a weight is a share of the pods: with two replicas, the 25% step runs one new pod next to the two old ones.
 
-## What it actually shows you
+The analysis step runs the AnalysisTemplate in `helm/demo/templates/analysis-template.yaml`. After a 30-second delay it runs this query against Prometheus three times, 30 seconds apart:
 
-Push a commit that bumps `helm/demo/values.yaml` image.tag. ArgoCD notices and syncs. Argo Rollouts applies the new Rollout revision. Watch it advance:
-
-```bash
-make rollout-status
-# same as: kubectl argo rollouts get rollout demo -n app --watch
+```promql
+sum(rate(http_requests_total{service="demo", code=~"2.."}[2m]))
+/
+sum(rate(http_requests_total{service="demo"}[2m]))
 ```
 
-The canary shifts 25% of traffic to the new version, pauses, then runs an analysis step. The `AnalysisTemplate` queries Prometheus for the 2xx HTTP success-rate ratio over a 2-minute window — `sum(rate(http_requests_total{code=~"2.."}[2m])) / sum(rate(http_requests_total[2m]))`. If the result holds at or above 0.95, the rollout advances to 50%, then 75%, then 100%. If it drops below, Argo Rollouts aborts and rolls back to the previous revision. This is the canary pattern teams run in production, on your laptop, for free.
+A measurement passes when the result is at least 0.95. If two of the three fail, the AnalysisRun fails, Argo Rollouts aborts the update, and the old version keeps serving.
 
-The `demo` image exports `http_requests_total` directly (Express + prom-client), so the gate runs against real request data. Set `failureRate` on the chart to push a deliberately bad canary and watch the rollback fire.
+### Watch it roll back
 
-### Verified in CI
+On its own the demo only receives probe and scrape requests, and those always return 200. To see the gate fail, send it real traffic and ship a version that fails part of it:
 
-This isn't a diagram-only claim. [`.github/workflows/canary-e2e.yml`](.github/workflows/canary-e2e.yml) stands up a real kind cluster, installs Argo Rollouts and a live Prometheus, drives steady 2xx traffic through the demo workload, then ships a new image and lets the canary run. The rollout advances **only** because the real `AnalysisTemplate` success-rate query clears the ≥0.95 gate — the same PromQL shown above, on real scraped data. Last run:
+1. Start two curl pods that call `/api/work` in a loop:
+   ```bash
+   kubectl apply -f ci/traffic.yaml
+   ```
+2. Set `failureRate: "0.5"` in `helm/demo/values.yaml` (the new pods fail half of their `/api/work` calls), commit, and push.
+3. `make rollout-status` shows the AnalysisRun fail and the rollout stop as `Degraded`, with the old pods still serving.
 
-```
-Status:   ✔ Healthy       Step: 8/8   SetWeight: 100
-demo   Rollout   ✔ Healthy
-└─ AnalysisRun demo-…-2-2   ✔ Successful
-```
+Revert the commit to bring the Rollout back to `Healthy`, and delete the traffic with `kubectl delete -f ci/traffic.yaml`.
 
-The `rate()` window (2m) and step pauses (30s) are the production values; the CI overlay ([`helm/demo/values.ci.yaml`](helm/demo/values.ci.yaml)) compresses only the *timing* so the genuine gate fits a runner — nothing about the analysis is mocked. Reproduce locally with `make up` and a `helm/demo/values.yaml` image bump.
+### Checked in CI
 
----
+[`.github/workflows/canary-e2e.yml`](.github/workflows/canary-e2e.yml) creates a kind cluster on a GitHub runner, installs Argo Rollouts and a small Prometheus, sends steady traffic to the demo, then ships a second image and waits for the canary. The job passes only if the rollout reaches `Healthy` and an AnalysisRun succeeded. The CI values file ([`helm/demo/values.ci.yaml`](helm/demo/values.ci.yaml)) shortens the pauses and the `rate()` window so the run fits a runner; the query and the 0.95 threshold are the same. Last successful run: [2026-07-05](https://github.com/ykstorm/stackup/actions/runs/28745258492).
 
 ## Architecture
 
 ```mermaid
-graph TD
-    Dev[Developer machine] -->|kind create cluster| Kind[kind cluster<br/>single node]
-    Kind --> CP[Control plane]
-    CP --> Argo[ArgoCD]
-    Argo --> Apps[6 child apps]
-    Apps --> Rollout[Argo Rollouts CRD]
-    Rollout --> Pods[Canary pods]
-    Pods --> Prom[Prometheus]
-    Prom --> Graf[Grafana]
+flowchart LR
+    push[git push to main] --> sync[ArgoCD syncs helm/demo]
+    sync --> canary[Rollout: new version on 25% of pods]
+    canary --> analysis[AnalysisRun: success rate from Prometheus]
+    analysis -->|at least 0.95| promote[50%, 75%, then 100%]
+    analysis -->|two failed measurements| abort[Abort: old version keeps serving]
 ```
 
-For full topology + sequence diagrams, see [docs/architecture.md](docs/architecture.md).
-
-A static documentation site (overview, getting started, architecture, GitOps + canary) is built from `docs-site/` and published to GitHub Pages on merge to `main`.
-
----
+[docs/architecture.md](docs/architecture.md) covers the cluster, the ArgoCD tree, and the security settings. [docs/gitops.md](docs/gitops.md) covers the app-of-apps layout and the canary in detail.
 
 ## Makefile targets
 
 ```bash
-make help     # Show all targets
-make up             # Full bring-up: create cluster + install platform + demo
-make down           # Tear down kind cluster (clean)
-make smoke          # Run smoke tests (requires cluster up)
-make lint           # Lint all YAML + Helm charts
-make rollout-status # Watch the demo Argo Rollout canary progress
+make help            # list targets
+make up              # create the cluster and install everything (scripts/bootstrap.sh)
+make down            # delete the kind cluster
+make demo-image      # build the demo image and load it into kind (DEMO_IMAGE=stackup-demo:v2 for a new tag)
+make smoke           # render and validate the charts (no cluster needed)
+make lint            # parse every YAML file and lint the Helm charts
+make rollout-status  # watch the demo Rollout in the terminal
 ```
-
----
 
 ## Limits
 
-- No real LoadBalancer service type (kind doesn't ship one). We use hostPort. For real LB, deploy to a cloud cluster.
-- Storage is local-path PVs by default. Re-creating the cluster wipes them. Add Longhorn or OpenEBS if you need persistence across teardowns.
-- Single-tenant workload namespace. Multi-tenant needs additional NetworkPolicy and RBAC work (PRs welcome).
-- The `demo` workload is a stand-in for your real service — it exists to drive the canary, not to be a product. (A legacy `buyerchat` chart still lives in `helm/buyerchat` as an example; it is not what `make up` deploys.)
+- kind has no LoadBalancer. Ingress uses hostPort 80 and 443 on the single node.
+- Nothing is persisted. Prometheus and Grafana use `emptyDir`, and `make down` deletes the cluster.
+- The Sealed Secrets controller creates a new key for each cluster, so anything sealed against one cluster will not decrypt on the next.
+- One node and one workload namespace. More tenants would need more NetworkPolicy and RBAC work.
+- The demo is a stand-in for a real service. It exists so the canary has real request metrics to judge.
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE).
+Apache License 2.0. See [LICENSE](LICENSE).

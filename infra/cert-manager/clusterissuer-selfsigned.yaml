@@ -1,32 +1,22 @@
-# Self-signed ClusterIssuer for the showcase cluster.
+# Self-signed ClusterIssuer for the local kind cluster.
 #
-# Why self-signed (and not Let's Encrypt / ACME):
+# Why self-signed rather than Let's Encrypt (ACME):
 #
-# - Let's Encrypt requires a publicly resolvable domain that the ACME
-#   challenge server can reach. buyerchat.localtest.me resolves to
-#   127.0.0.1 from anywhere, which means LE's HTTP-01 challenger
-#   would also try 127.0.0.1 — its own loopback, not ours. The
-#   challenge would never see our ingress and the cert request would
-#   fail.
-# - DNS-01 would work but requires a real DNS provider account
-#   (Route 53, Cloudflare API token, etc.) — out of scope for a
-#   $0-cost local showcase.
-# - Self-signed gives us a working TLS handshake; the only cost is
-#   that browsers / curl reject the chain by default. `curl -k` and a
-#   browser "trust this certificate" click handle the showcase case.
+# - HTTP-01 needs a public DNS name that the ACME challenge server can
+#   reach. *.localtest.me resolves to 127.0.0.1 everywhere, so the
+#   challenger would connect to its own loopback, never to this cluster.
+# - DNS-01 would work but needs a DNS provider account and API token.
+# - Self-signed gives a working TLS handshake. Browsers and curl reject
+#   the chain by default; `curl -k` or a browser exception covers it.
 #
-# How cert-manager uses this Issuer:
-#
-# Buyerchat's Ingress object carries the annotation
+# How it is used: each Ingress carries the annotation
 #   cert-manager.io/cluster-issuer: selfsigned
-# When that Ingress is created, cert-manager sees it, creates a
-# Certificate CR for the Ingress's tls.secretName, and resolves it
-# against this Issuer — which simply signs a cert with a fresh
-# in-memory key. The resulting Secret is mounted by the ingress-nginx
-# controller and served on the TLS handshake.
+# cert-manager then creates a Certificate for the Ingress's
+# tls.secretName and signs it with a fresh key from this issuer. The
+# ingress-nginx controller serves the resulting Secret.
 #
-# trade-offs entry will document the one-line ClusterIssuer swap
-# that turns this into ACME for a real-domain v1.0 deployment.
+# Moving to a real domain means replacing `selfSigned: {}` with an `acme:`
+# block (DNS-01 solver) and pointing the Ingress annotations at it.
 
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer

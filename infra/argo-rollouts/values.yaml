@@ -1,16 +1,13 @@
-# Argo Rollouts values for the showcase cluster.
+# Argo Rollouts values for the stackup cluster.
 #
-# Values for the upstream chart are nested under its dependency alias
-# `argo-rollouts` (the dependency name in Chart.yaml).
+# Values for the upstream chart are nested under its dependency name
+# `argo-rollouts` (see Chart.yaml).
 #
-# Kept minimal: the controller is all the buyerchat canary needs. The
-# kubectl-plugin dashboard is a separate client-side tool (installed on
-# the operator's laptop, not in-cluster) and is not enabled here.
+# Kept minimal: the controller is all the demo canary needs. The
+# `kubectl argo rollouts` plugin runs on the laptop and reads Rollout
+# objects directly, so no in-cluster dashboard is installed.
 
 argo-rollouts:
-  # Controller only. The dashboard pod is off by default upstream; we
-  # keep it off — the `kubectl argo rollouts` plugin reads the Rollout
-  # CRs directly and needs no in-cluster dashboard.
   dashboard:
     enabled: false
 

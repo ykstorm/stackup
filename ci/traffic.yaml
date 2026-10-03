@@ -1,9 +1,16 @@
-# Steady traffic for the canary e2e. Hammers the demo's /api/work with healthy
-# requests so http_requests_total has real 2xx data for the success-rate gate to
-# read. FAILURE_RATE=0 on the image → every request is 200 → ratio ~1.0 ≥ 0.95,
-# so the real analysis passes and the canary advances. (The negative case — a
-# FAILURE_RATE>0 image driving the ratio below 0.95 and forcing a rollback — is
-# the counterpart, driven by the workflow.)
+# Steady traffic for the demo canary. Two curl pods call /api/work in a loop so
+# http_requests_total has real request data for the success-rate gate to read.
+#
+# - The CI canary job (.github/workflows/canary-e2e.yml) applies it with
+#   FAILURE_RATE=0, so every request returns 200, the ratio stays near 1.0,
+#   and the canary advances.
+# - On the kind cluster from `make up`, the README's roll-back walk-through
+#   applies it before shipping a version with failureRate > 0, so the canary's
+#   failures show up in the ratio and the gate aborts the rollout.
+#
+# The `app` namespace enforces the restricted Pod Security profile, so the pod
+# runs as a non-root UID with no capabilities and the RuntimeDefault seccomp
+# profile.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,6 +25,13 @@ spec:
     metadata:
       labels: { app: traffic }
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: curl
           image: curlimages/curl:8.10.1
@@ -28,6 +42,10 @@ spec:
                 curl -s -o /dev/null http://demo.app.svc.cluster.local:3000/api/work || true
                 sleep 0.05
               done
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
           resources:
             requests: { cpu: "10m", memory: "16Mi" }
             limits: { cpu: "100m", memory: "32Mi" }

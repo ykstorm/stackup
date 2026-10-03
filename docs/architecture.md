@@ -1,137 +1,121 @@
-# Stackup — Architecture
+# Architecture
 
-## 1. Cluster topology
+## 1. The cluster
 
 ```mermaid
 graph TD
-    Dev[Developer machine] -->|kind create cluster| Kind[kind cluster<br/>3 nodes Docker containers]
-    Kind --> CP[Control plane node]
-    Kind --> W1[Worker node 1]
-    Kind --> W2[Worker node 2]
-
-    CP --> ETCD[etcd]
-    CP --> API[API server]
-    CP --> Sched[scheduler]
-    CP --> CM[controller-manager]
-
-    W1 --> Calico1[Calico CNI agent]
-    W2 --> Calico2[Calico CNI agent]
-
-    W1 --> Pods1[Workload pods]
-    W2 --> Pods2[Workload pods]
-
-    Dev -->|kubectl| API
-    Dev -->|HTTPS hostPort 80/443| W1
+    Host[Laptop: Docker] -->|kind create cluster| Node[kind node: stackup-control-plane]
+    Host -->|ports 80 and 443| Node
+    Node --> CP[API server, scheduler, controller-manager, etcd]
+    Node --> CNI[Calico]
+    Node --> Platform[Platform pods: ArgoCD, Argo Rollouts, ingress-nginx,<br/>cert-manager, Sealed Secrets, Prometheus, Grafana]
+    Node --> Demo[demo pods, namespace app]
 ```
 
-kind launches 3 Docker containers — one control-plane + two workers. Each node is itself a Docker container running containerd + kubelet. Pods run inside the workers as containers-within-containers. The whole thing fits in ~3 GB of RAM.
+`kind/cluster.yaml` defines one node, a control-plane node that also runs every workload. The node is a Docker container running containerd and the kubelet, so pods are containers inside that container.
 
-## 2. GitOps tree (app-of-apps)
+The cluster sets `disableDefaultCNI: true`, so kind's own CNI never starts. `scripts/bootstrap.sh` installs Calico through the tigera-operator instead, because Calico enforces both the ingress and the egress half of a NetworkPolicy. The pod subnet is `192.168.0.0/16`, matching `kind/calico/installation.yaml`.
+
+The node publishes ports 80 and 443 to the host (`extraPortMappings`), and ingress-nginx binds them with hostPort. That is how `https://grafana.localtest.me` on the laptop reaches the controller pod.
+
+The whole stack needs about 6 GB of memory for Docker. Below about 4 GB the controllers crash-loop.
+
+| Namespace | What runs there |
+|---|---|
+| `app` | The demo Rollout. Enforces the `restricted` Pod Security profile. |
+| `argocd` | ArgoCD |
+| `argo-rollouts` | Argo Rollouts controller |
+| `monitoring` | kube-prometheus-stack (Prometheus, Grafana, kube-state-metrics, node-exporter) |
+| `ingress-nginx` | ingress-nginx controller |
+| `cert-manager` | cert-manager |
+| `kube-system` | Sealed Secrets controller, CoreDNS |
+| `tigera-operator`, `calico-system`, `calico-apiserver` | Calico |
+
+## 2. The GitOps tree
 
 ```mermaid
 graph LR
-    Git[Git repo] -->|ArgoCD watches| Root[root application]
-    Root --> A1[cert-manager]
-    Root --> A2[ingress-nginx]
-    Root --> A3[sealed-secrets]
-    Root --> A4[kube-prometheus-stack]
-    Root --> A5[loki + promtail]
-    Root --> A6[tempo]
-    Root --> A7[argo-rollouts]
-    Root --> A8[buyerchat workload]
-
-    A8 -->|Rollout CRD| Argo[Argo Rollouts controller]
-    Argo -->|progressive| Pods[canary replicas]
-
-    classDef gitops fill:#dbeafe,stroke:#2563eb
-    class Root,A1,A2,A3,A4,A5,A6,A7,A8 gitops
+    Git[This repository, main] -->|ArgoCD polls| Root[root Application]
+    Root --> A1[argo-rollouts]
+    Root --> A2[cert-manager]
+    Root --> A3[demo]
+    Root --> A4[ingress-nginx]
+    Root --> A5[kube-prometheus-stack]
+    Root --> A6[sealed-secrets]
+    A3 -->|Rollout| AR[Argo Rollouts controller]
 ```
 
-The root Application is the only thing applied by `make up`. Everything else is sync'd by ArgoCD from the git repo. That's the discipline: state lives in git, not in `kubectl apply` commands.
+`argocd/root-app.yaml` points at `argocd/apps/`, and every file there is an Application. Each one syncs automatically with prune and self-heal turned on, so git is the source of truth: a resource removed from git is removed from the cluster, and an edit made with `kubectl` is reverted on the next sync. [gitops.md](gitops.md) lists the source of each child.
 
-## 3. Progressive delivery flow
+## 3. The canary
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant Dev as Developer
     participant Git as Git
-    participant ArgoCD as ArgoCD
+    participant CD as ArgoCD
     participant AR as Argo Rollouts
     participant Prom as Prometheus
-    participant Pods as Pods
 
-    Dev->>Git: commit (bump image.tag)
-    Git-->>ArgoCD: webhook / poll
-    ArgoCD->>AR: apply Rollout resource
-    AR->>Pods: scale canary 25%
-    AR->>Prom: query error_rate over 60s
-    alt error_rate < 0.5%
-        Prom-->>AR: ok
-        AR->>Pods: scale 50% → 75% → 100%
-        AR-->>Dev: Rollout succeeded
-    else error_rate spike
-        Prom-->>AR: > threshold
-        AR->>Pods: scale back to old version
-        AR-->>Dev: Rollout aborted, reverted
+    Dev->>Git: commit (for example, bump image.tag)
+    CD->>Git: poll (every 3 minutes)
+    CD->>AR: apply the updated Rollout
+    AR->>AR: setWeight 25, then pause 30s
+    loop 3 measurements, 30s apart, after a 30s delay
+        AR->>Prom: success-rate query over [2m]
+        Prom-->>AR: ratio of 2xx responses
+    end
+    alt at most one measurement below 0.95
+        AR->>AR: setWeight 50, 75, 100 with 30s pauses
+    else two measurements below 0.95
+        AR->>AR: abort: scale the new ReplicaSet down, old version keeps serving
     end
 ```
 
-## 4. Observability triangle
+The query, as `helm/demo/templates/analysis-template.yaml` renders it with the default values:
 
-```mermaid
-graph TB
-    Pod[buyerchat Pod] --> M["/api/metrics<br/>Prometheus scrape 30s"]
-    Pod --> L["stdout (JSON)<br/>Promtail tail"]
-    Pod --> T["OTLP gRPC :4317<br/>Tempo ingest"]
-
-    M --> P[Prometheus]
-    L --> LK[Loki]
-    T --> TM[Tempo]
-
-    P --> G[Grafana]
-    LK --> G
-    TM --> G
-
-    G -->|drill: panel → logs| LK
-    G -->|drill: log → trace_id| TM
-
-    classDef tel fill:#fef3c7,stroke:#ca8a04
-    classDef store fill:#dcfce7,stroke:#16a34a
-    classDef view fill:#dbeafe,stroke:#2563eb
-    class M,L,T tel
-    class P,LK,TM store
-    class G view
+```promql
+sum(rate(http_requests_total{service="demo", code=~"2.."}[2m]))
+/
+sum(rate(http_requests_total{service="demo"}[2m]))
 ```
 
-The triangle is the standard you'll find in any production-grade shop. Stackup ships it pre-wired.
+It covers every pod behind the `demo` Service, old and new, so the result is the success rate of the service as a whole while the canary is part of it. [gitops.md](gitops.md) explains the weights and the failure rule in detail.
 
-## 5. Security posture
+## 4. Metrics
 
-| Layer | Control |
+The demo app (`apps/demo/server.js`) uses prom-client. Every response increments `http_requests_total{service, method, path, code}`, and `GET /metrics` serves it along with the default Node.js process metrics.
+
+The chart's ServiceMonitor has the Prometheus operator from kube-prometheus-stack (release `kps`) scrape `/metrics` every 30 seconds. Grafana reads from that Prometheus and comes with the chart's standard Kubernetes dashboards. There is no alerting and no log or trace pipeline: the stack collects metrics only.
+
+Prometheus and Grafana use `emptyDir` volumes, so their data does not survive a pod restart or `make down`.
+
+## 5. Security settings
+
+| Area | Setting |
 |---|---|
-| Pod admission | PSS (Pod Security Standards) `restricted` profile on workload namespaces |
-| Network | NetworkPolicy `default-deny` on workload namespaces, explicit allow rules per service |
-| Secrets | Sealed Secrets — secrets encrypted in git, decrypted only in-cluster |
-| TLS | cert-manager self-signed CA (swap to ACME for production) |
-| RBAC | Workload namespaces have no cluster-admin bindings |
-| Image policy | (out of scope v1.0) — recommended: Cosign + admission webhook |
+| Pod admission | The `app` namespace enforces, audits and warns on the `restricted` Pod Security profile (`manifests/app/00-namespace.yaml`). |
+| Pods | The demo runs as UID 1001 with a read-only root filesystem, no capabilities, no privilege escalation, the `RuntimeDefault` seccomp profile, and no service account token mounted. |
+| Network | Calico enforces NetworkPolicy in both directions. |
+| Secrets | The Sealed Secrets controller decrypts SealedSecret resources in the cluster. Its key is created per cluster. |
+| TLS | cert-manager issues certificates for each Ingress from the self-signed `selfsigned` ClusterIssuer. |
 
-## 6. What's intentionally simplified
+## 6. What is simplified
 
-- **Single-cluster.** No multi-cluster, no Fleet, no cross-cluster GitOps. Add when you need it.
-- **Single-tenant.** Workload namespace is a single tenant. Multi-tenant adds Network/RBAC policy noise.
-- **No LoadBalancer.** kind doesn't have one. We use `hostPort` for ingress.
-- **No persistent storage for the demo.** buyerchat's helm chart points to a non-existent DB on purpose — it runs degraded. The point isn't to be a working app; it's to be a working *cluster*.
+- One node and one workload namespace.
+- No LoadBalancer. kind does not have one, so ingress uses hostPort.
+- No persistence. Nothing survives `make down`.
+- Self-signed certificates. Browsers and `curl` need to be told to trust them (`curl -k`).
+- No alerting, logs or traces.
 
-## 7. What changes for production
+## 7. Moving off kind
 
-When you take this to AWS EKS / GCP GKE / Azure AKS, change:
-1. kind → managed K8s control plane (EKS / GKE / AKS)
-2. self-signed ClusterIssuer → ACME (Let's Encrypt) via DNS-01
-3. `hostPort` ingress → real LoadBalancer service type
-4. Local volumes → CSI driver for cloud block storage
-5. Single replica components → HA (Prometheus with Thanos, Loki with Boltdb-shipper)
-6. RBAC bindings tightened (no full cluster-admin tokens)
+On a managed cluster (EKS, GKE, AKS) the main changes are:
 
-See [docs/production-guide.md] (v1.3 roadmap) for the line-by-line diff.
+1. A managed control plane with more than one node.
+2. A LoadBalancer Service for ingress-nginx instead of hostPort.
+3. An ACME ClusterIssuer (DNS-01) instead of the self-signed one.
+4. Persistent volumes for Prometheus and Grafana.
+5. A backup of the Sealed Secrets key, so sealed values survive a rebuilt cluster.
+6. A traffic router (an ingress controller integration or a service mesh), so canary weights are exact shares of traffic rather than pod counts.

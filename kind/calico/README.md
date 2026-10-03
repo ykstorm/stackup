@@ -2,55 +2,37 @@
 
 ## Why Calico (not kindnet)
 
-kindnet — the default CNI shipped with `kind` — supports basic pod-to-
-pod networking but its NetworkPolicy enforcement is partial. Egress
-rules in particular are not reliably honored. For a sprint that ships
-a default-deny + explicit-allow NetworkPolicy demo as a top-line
-deliverable, that's a hard blocker.
+kindnet, the CNI that ships with kind, provides pod-to-pod networking, but its NetworkPolicy enforcement is partial; egress rules in particular are not reliably honored. The demo relies on a default-deny policy with explicit allow rules, so it needs a CNI that enforces both directions.
 
 Calico:
 
-- enforces both `Ingress` and `Egress` rules in full,
-- is the de-facto industry default CNI on bare metal / VM Kubernetes,
-- installs cleanly via the upstream `tigera-operator` manifest,
-- adds ~30s to first-cluster bring-up and 2 controller pods of
-  steady-state overhead.
+- enforces both `Ingress` and `Egress` rules,
+- installs through the upstream `tigera-operator` manifest,
+- adds about 30 seconds to the first bring-up and two controller pods at steady state.
 
-The `kind/cluster.yaml` declares `disableDefaultCNI: true` so kindnet
-never starts, leaving the cluster in a `NotReady` state until Calico
-is applied.
+`kind/cluster.yaml` sets `disableDefaultCNI: true` so kindnet never starts. The node stays `NotReady` until Calico is applied.
 
-## Pinned versions
+## Pinned version
 
-- **Calico release:** `v3.28.2` (current LTS series at sprint start;
-  bumped intentionally — see `docs/tradeoffs.md` Day 7).
-- **tigera-operator manifest URL** (consumed by `scripts/up.ps1`):
-  `https://raw.githubusercontent.com/projectcalico/calico/v3.28.2/manifests/tigera-operator.yaml`
+- Calico `v3.28.2`
+- tigera-operator manifest: `https://raw.githubusercontent.com/projectcalico/calico/v3.28.2/manifests/tigera-operator.yaml`
 
 ## Files
 
-- `installation.yaml` — Calico `Installation` + `APIServer` custom
-  resources. The operator reads these and reconciles the data-plane.
-  IP pool aligned with `kind/cluster.yaml` `podSubnet: 192.168.0.0/16`.
+- `installation.yaml`: the Calico `Installation` and `APIServer` custom resources. The operator reads them and reconciles the data plane. The IP pool matches `podSubnet: 192.168.0.0/16` in `kind/cluster.yaml`.
 
-## Bring-up order (handled by `scripts/up.ps1`)
+## Bring-up order (done by `scripts/bootstrap.sh`)
 
-1. `kubectl create -f <tigera-operator URL>` — deploys the operator
-   into namespace `tigera-operator`.
-2. `kubectl wait --for=condition=Available deployment/tigera-operator
-   -n tigera-operator --timeout=180s` — operator must be ready before
-   the Installation CR can be reconciled.
-3. `kubectl apply -f kind/calico/installation.yaml` — operator picks
-   up the CR, deploys `calico-node` (DaemonSet), `calico-kube-
-   controllers`, and `calico-apiserver`.
-4. `kubectl wait --for=condition=Ready node --all --timeout=300s` —
-   nodes flip to Ready once Calico's data-plane is up.
+1. Apply the tigera-operator manifest. It deploys the operator into the `tigera-operator` namespace.
+2. `kubectl wait --for=condition=Available deployment/tigera-operator -n tigera-operator --timeout=180s`. The operator must be ready before it can reconcile the Installation.
+3. `kubectl apply -f kind/calico/installation.yaml`. The operator deploys `calico-node` (a DaemonSet), `calico-kube-controllers` and `calico-apiserver`.
+4. `kubectl wait --for=condition=Ready node --all --timeout=300s`. The node turns Ready once Calico's data plane is up.
 
-## Verification
+## Verify
 
-```powershell
+```sh
 kubectl get pods -A
-# expect: tigera-operator/* Running, calico-system/* Running, no kindnet-*
+# expect: tigera-operator/* and calico-system/* Running, no kindnet-*
 
 kubectl get installation default -o jsonpath='{.status.state}'
 # expect: Ready

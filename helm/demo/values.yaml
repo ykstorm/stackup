@@ -1,5 +1,6 @@
 # Default values for the demo chart (the canary subject).
-# Production-shaped; values.dev.yaml overrides for the kind cluster.
+# values.dev.yaml overrides these for the kind cluster; values.ci.yaml
+# layers on top of values.dev.yaml for the CI canary job.
 
 image:
   repository: stackup-demo
@@ -16,9 +17,11 @@ replicaCount: 2
 # PromQL selects on service="<this>", so the two MUST agree.
 serviceName: demo
 
-# Fraction of /api/work requests the app fails (0..1). Baked into the
-# image at build time normally; settable here to demo a bad canary
-# (e.g. 0.3) without rebuilding.
+# Fraction of /api/work requests the app fails (0..1). Changing it
+# changes the pod template, so it starts a new canary on its own; set
+# it to e.g. "0.5" to ship a bad version without rebuilding the image.
+# Only /api/work is affected, so the gate needs real traffic on that
+# path to see the failures (see ci/traffic.yaml).
 failureRate: "0"
 
 # Progressive delivery. When false (default) the chart renders a plain
@@ -27,18 +30,18 @@ failureRate: "0"
 # exactly one workload object exists either way.
 rollout:
   enabled: false
-  # Canary pause between weight steps. Production keeps 30s of soak per step;
-  # the CI e2e overlay (values.ci.yaml) shortens it so the whole rollout fits
-  # a runner budget. The Rollout template reads this — prod behaviour unchanged.
+  # Canary pause between weight steps: 30s of soak per step by default.
+  # The CI e2e overlay (values.ci.yaml) shortens it so the whole rollout
+  # fits a runner budget.
   canary:
     pauseDuration: 30s
   analysis:
     # kube-prometheus-stack exposes a stable, release-independent service
     # for the operated Prometheus at this address.
     prometheusAddress: http://prometheus-operated.monitoring.svc:9090
-    # rate() window for the success-rate PromQL. 2m in production; the CI
+    # rate() window for the success-rate PromQL. 2m by default; the CI
     # overlay shortens it to match a compressed traffic window. Templated so
-    # prod and CI share one AnalysisTemplate.
+    # both share one AnalysisTemplate.
     window: 2m
     interval: 30s
     # Bounded step-analysis: run the query `count` times, then conclude.
@@ -49,7 +52,11 @@ rollout:
     initialDelay: 30s
     # successCondition is `result[0] >= successThreshold`.
     successThreshold: "0.95"
-    failureLimit: 3
+    # The metric fails only when failed measurements EXCEED failureLimit,
+    # and reaching `count` otherwise marks it Successful. So failureLimit
+    # must stay below count or the gate can never abort. 1 with count 3:
+    # one bad measurement is tolerated, two abort the rollout.
+    failureLimit: 1
 
 strategy:
   type: RollingUpdate
@@ -98,8 +105,7 @@ serviceMonitor:
   scrapeTimeout: 10s
   releaseLabel: kps
 
-# Probes — httpGet against /healthz, which always returns 200 (unlike the
-# degraded buyerchat app, this workload is healthy by design).
+# Probes — httpGet against /healthz, which always returns 200.
 probes:
   startup:
     failureThreshold: 30

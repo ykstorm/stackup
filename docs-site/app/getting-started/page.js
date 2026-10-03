@@ -7,9 +7,31 @@ export default function GettingStarted() {
     <>
       <h1>Getting Started</h1>
       <p className="lede">
-        Clone the repo, run one command, and reach a working cluster in about
-        ten minutes. You need Docker and kubectl on the machine.
+        Install the prerequisites, run one command, and open the cluster in a
+        browser.
       </p>
+
+      <h2>Prerequisites</h2>
+      <ul>
+        <li>
+          Docker, with at least 6 GB of memory available to it (Docker Desktop:
+          Settings, Resources). Below about 4 GB the controllers crash-loop.
+        </li>
+        <li>
+          <code>kind</code>, <code>kubectl</code>, and <code>helm</code> 3.15 or
+          newer.
+        </li>
+        <li>
+          The <code>kubectl-argo-rollouts</code> plugin, used by{' '}
+          <code>make rollout-status</code>.
+        </li>
+        <li>
+          <code>git</code>, <code>bash</code> and <code>make</code>. On
+          Windows, run from Git Bash or WSL; without <code>make</code>, run{' '}
+          <code>bash scripts/bootstrap.sh</code>.
+        </li>
+        <li>Ports 80 and 443 free on the host.</li>
+      </ul>
 
       <h2>Bring it up</h2>
       <pre>
@@ -17,66 +39,83 @@ export default function GettingStarted() {
 make up`}</code>
       </pre>
       <p>
-        <code>make up</code> creates the kind cluster, installs the platform,
-        and deploys the <code>demo</code> workload (the canary subject). The
-        root ArgoCD Application is the only thing applied directly; ArgoCD syncs
-        everything else from the git repo.
+        <code>make up</code> runs <code>scripts/bootstrap.sh</code>. It creates
+        the kind cluster, installs Calico and the platform charts one at a time
+        (waiting for each), builds the <code>demo</code> image and loads it into
+        kind, installs the demo chart, and applies the root ArgoCD Application.
+        From then on ArgoCD manages everything from git.
       </p>
 
-      <h2>Hostnames</h2>
+      <h2>Open the cluster</h2>
       <p>
-        The ingress hosts use <code>localtest.me</code>, which resolves to{' '}
-        <code>127.0.0.1</code> automatically — no hosts file editing needed.
+        Hostnames under <code>localtest.me</code> resolve to{' '}
+        <code>127.0.0.1</code>, so there is nothing to add to a hosts file.
+        Certificates are self-signed, so the browser warns once per host.
       </p>
-
-      <h2>Open the surfaces</h2>
       <ul>
         <li>
-          <strong>grafana.localtest.me</strong> — RED metrics from
-          Prometheus. Logs and traces (Loki, Tempo) are on the roadmap, not
-          installed yet.
+          <strong>https://grafana.localtest.me</strong>: log in as{' '}
+          <code>admin</code> / <code>prom-operator</code>, the chart default.
         </li>
         <li>
-          <strong>argocd.localtest.me</strong> — the GitOps tree of six
-          child apps.
+          <strong>https://argocd.localtest.me</strong>: log in as{' '}
+          <code>admin</code>. The password is in the{' '}
+          <code>argocd-initial-admin-secret</code> Secret in the{' '}
+          <code>argocd</code> namespace.
         </li>
         <li>
-          The <code>demo</code> workload has no ingress. Reach it with{' '}
+          The rollout, in the terminal: <code>make rollout-status</code>.
+        </li>
+        <li>
+          The <code>demo</code> service has no ingress yet. Reach it with{' '}
           <code>kubectl -n app port-forward svc/demo 3000:3000</code>, then{' '}
           <code>curl localhost:3000/metrics</code> to see{' '}
           <code>http_requests_total</code>.
         </li>
       </ul>
 
+      <h2>Ship a change</h2>
+      <p>
+        ArgoCD tracks <code>main</code> of the repository named in{' '}
+        <code>argocd/</code>, which is <code>ykstorm/stackup</code>. To deploy
+        from git yourself, fork it and replace that URL with your fork&apos;s
+        before running <code>make up</code>. Then:
+      </p>
+      <pre>
+        <code>{`make demo-image DEMO_IMAGE=stackup-demo:v2   # build v2 and load it into kind
+# set image.tag: v2 in helm/demo/values.yaml, commit, push
+make rollout-status                           # watch the canary`}</code>
+      </pre>
+
       <h2>Makefile targets</h2>
       <pre>
-        <code>{`make help            # Show all targets
-make up              # Create cluster + install platform + demo
-make down            # Tear down the kind cluster
-make smoke           # Run smoke tests (requires cluster up)
-make lint            # Lint all YAML + Helm charts
-make rollout-status  # Watch the demo canary progress`}</code>
+        <code>{`make help            # list targets
+make up              # create the cluster and install everything
+make down            # delete the kind cluster
+make demo-image      # build the demo image and load it into kind
+make smoke           # render and validate the charts (no cluster needed)
+make lint            # parse every YAML file and lint the Helm charts
+make rollout-status  # watch the demo Rollout in the terminal`}</code>
       </pre>
 
       <h2>Known limits</h2>
       <ul>
         <li>
-          No real LoadBalancer service type — kind does not ship one, so the
-          stack uses hostPort. Deploy to a cloud cluster for a real load
-          balancer.
+          kind has no LoadBalancer, so ingress uses hostPort 80 and 443 on the
+          single node.
         </li>
         <li>
-          Storage is local-path PVs by default. Re-creating the cluster wipes
-          them. Add Longhorn or OpenEBS for persistence across teardowns.
+          Nothing is persisted. Prometheus and Grafana use{' '}
+          <code>emptyDir</code>, and <code>make down</code> deletes the
+          cluster.
         </li>
         <li>
-          Single-tenant workload namespace. Multi-tenant needs more
-          NetworkPolicy and RBAC work.
+          The Sealed Secrets controller creates a new key for each cluster, so
+          anything sealed against one cluster will not decrypt on the next.
         </li>
         <li>
-          The <code>demo</code> workload is a stand-in for your real service —
-          it exists to drive the canary, not to be a product. The cluster is the
-          point, not the app.
+          The <code>demo</code> service is a stand-in for a real one. It exists
+          so the canary has real request metrics to judge.
         </li>
       </ul>
     </>

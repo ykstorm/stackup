@@ -1,25 +1,25 @@
 # CI e2e overlay for the canary proof (.github/workflows/canary-e2e.yml).
 #
-# Layered on top of values.dev.yaml. Same real Rollout + AnalysisTemplate +
-# Prometheus success-rate gate as production — only the *timing* is compressed
-# so a genuine 25→50→75→100 canary fits a GitHub runner budget. Nothing here
-# fakes the gate: the analysis still queries a real Prometheus computing a real
-# 2xx success ratio from the workload's http_requests_total counter.
+# Layered on top of values.dev.yaml. Same Rollout, AnalysisTemplate and
+# Prometheus success-rate gate as the default values; only the timing is
+# compressed so a full 25→50→75→100 canary fits a GitHub runner budget. The
+# analysis still queries a real Prometheus computing the 2xx success ratio
+# from the workload's http_requests_total counter.
 
 replicaCount: 2
 
 rollout:
   enabled: true
   canary:
-    pauseDuration: 10s          # prod 30s
+    pauseDuration: 10s          # default 30s
   analysis:
     prometheusAddress: http://prometheus-operated.monitoring.svc:9090
-    window: 1m                  # prod 2m rate() window
-    interval: 15s               # prod 30s
-    count: 2                    # prod 3 → 2 × 15s analysis
-    initialDelay: 20s           # prod 30s
+    window: 1m                  # default 2m rate() window
+    interval: 15s               # default 30s
+    count: 2                    # default 3 → 2 × 15s analysis
+    initialDelay: 20s           # default 30s
     successThreshold: "0.95"    # unchanged — the real gate
-    failureLimit: 2
+    failureLimit: 1             # below count, so two failures abort
 
 # CI Prometheus scrapes via endpoints service-discovery (ci/prometheus.yaml),
 # not the kube-prometheus-stack operator, so the operator ServiceMonitor CRD

@@ -12,9 +12,9 @@ NC='\033[0m' # No Color
 
 ERRORS=0
 
-log_pass() { echo -e "${GREEN}✓ $1${NC}"; }
-log_warn() { echo -e "${YELLOW}⚠ $1${NC}"; }
-log_fail() { echo -e "${RED}✗ $1${NC}"; ERRORS=$((ERRORS+1)); }
+log_pass() { echo -e "${GREEN}ok   $1${NC}"; }
+log_warn() { echo -e "${YELLOW}warn $1${NC}"; }
+log_fail() { echo -e "${RED}FAIL $1${NC}"; ERRORS=$((ERRORS+1)); }
 
 echo "=== stackup smoke test ==="
 

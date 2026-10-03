@@ -1,14 +1,13 @@
 # Wrapper chart for ArgoCD.
 #
-# Same shim pattern as infra/argo-rollouts: a Chart.yaml dependencies
-# block pinning the upstream chart, so `helm lint infra/argocd` runs in
-# CI and the app-of-apps can render this directory without a separate
-# `helm repo add`.
+# Same pattern as infra/argo-rollouts: a Chart.yaml dependency pinning the
+# upstream chart, so `helm lint infra/argocd` runs in CI and the bootstrap
+# installs it without a separate `helm repo add`.
 apiVersion: v2
 name: argocd
 description: |-
-  ArgoCD for the showcase cluster. Runs the GitOps control plane that
-  reconciles the app-of-apps tree under argocd/ against this repo.
+  ArgoCD for the stackup cluster. Runs the GitOps control plane that
+  reconciles the app-of-apps tree under argocd/ against this repository.
 type: application
 version: 0.1.0
 appVersion: "3.4.3"

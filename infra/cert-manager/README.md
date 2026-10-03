@@ -1,41 +1,33 @@
-# cert-manager (P3 Day 3)
+# cert-manager
 
-cert-manager + a single self-signed `ClusterIssuer` named `selfsigned`.
-TLS for the showcase comes from this Issuer; ingress-nginx serves the
-issued cert on `https://buyerchat.localtest.me/`.
+cert-manager plus one self-signed `ClusterIssuer` named `selfsigned`. Every Ingress in the cluster gets its certificate from this issuer.
 
-## Install
+`scripts/bootstrap.sh` installs the chart and applies the issuer. The ArgoCD Application in `argocd/apps/cert-manager.yaml` manages the chart from then on. The issuer is a cert-manager custom resource applied by the script, not part of that Application.
+
+## Install by hand
 
 ```sh
 helm repo add jetstack https://charts.jetstack.io
 helm repo update jetstack
 
-helm install cert-manager jetstack/cert-manager \
+helm upgrade --install cert-manager jetstack/cert-manager \
   --namespace cert-manager --create-namespace \
+  --version v1.20.2 \
   --set installCRDs=true \
   --wait --timeout 5m
 
 kubectl apply -f infra/cert-manager/clusterissuer-selfsigned.yaml
 ```
 
-## Why a single self-signed Issuer (not ACME / Let's Encrypt)
+## Why a self-signed issuer
 
-- Let's Encrypt's HTTP-01 challenger needs a public DNS name it can
-  reach. `buyerchat.localtest.me` resolves to 127.0.0.1 from
-  *anywhere*, so the challenger's connection attempt would loop back
-  to its own host, never reaching our cluster.
-- DNS-01 would work but requires a paid DNS provider with an API
-  token — out of scope for a $0-cost local showcase.
-- Self-signed gives us a working TLS handshake; the only cost is
-  browsers / curl reject the chain by default. `curl -k` covers the
-  smoke-test case.
+- Let's Encrypt's HTTP-01 challenge needs a public DNS name that reaches the cluster. `*.localtest.me` resolves to 127.0.0.1 everywhere, so the challenge would connect to the CA's own loopback, never to this cluster.
+- DNS-01 would work, but it needs an account and an API token with a DNS provider.
+- A self-signed issuer gives a working TLS handshake. Browsers and `curl` reject the chain by default; use `curl -k` or accept the browser warning.
 
-The single-line ClusterIssuer swap to ACME is captured in the an earlier iteration
-`docs/tradeoffs.md` entry.
+## How an Ingress uses it
 
-## How buyerchat consumes it
-
-The chart's Ingress carries:
+The Grafana Ingress from `infra/kube-prometheus-stack/values.yaml` is a typical example:
 
 ```yaml
 metadata:
@@ -43,21 +35,19 @@ metadata:
     cert-manager.io/cluster-issuer: selfsigned
 spec:
   tls:
-    - hosts: [buyerchat.localtest.me]
-      secretName: buyerchat-tls
+    - hosts: [grafana.localtest.me]
+      secretName: grafana-tls
 ```
 
-cert-manager observes the Ingress, creates a `Certificate` CR for
-`buyerchat-tls`, signs it via the `selfsigned` Issuer, and writes the
-resulting key + cert into the named Secret. ingress-nginx mounts the
-Secret and serves it on the TLS handshake.
+cert-manager sees the annotation, creates a `Certificate` for `grafana-tls`, signs it with the `selfsigned` issuer, and writes the key and certificate into that Secret. ingress-nginx serves it on the TLS handshake.
 
 ## Verify
 
 ```sh
-kubectl get clusterissuer selfsigned -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+kubectl get clusterissuer selfsigned \
+  -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
 # expect: True
 
-kubectl get certificate -n buyerchat
-# expect (after the chart installs): buyerchat-tls  True
+kubectl get certificate -A
+# expect READY True for each Ingress's TLS secret
 ```

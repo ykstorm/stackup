@@ -3,9 +3,8 @@
 # order, with a real `kubectl wait` gate between every step so a later
 # step never races ahead of an unready prerequisite.
 #
-# This is the bash counterpart to scripts/up.ps1 and is what `make up`
-# invokes. It is idempotent: re-running against an existing cluster
-# re-applies harmlessly.
+# `make up` invokes it. It is idempotent: re-running against an existing
+# cluster re-applies harmlessly.
 #
 # Ordering (each step blocks on the previous):
 #   1. kind create cluster (Calico CNI disabled in kind/cluster.yaml)
@@ -20,14 +19,12 @@
 #   9. build + side-load the demo image, install the demo chart, wait Ready
 #  10. register the ArgoCD app-of-apps root; wait Applications Synced
 #
-# LIVE VERIFIED 2026-06-24 on a kind cluster (Docker Desktop): every step
-# below brought its component up, and the buyerchat/demo Argo Rollouts canary
-# completed end to end (25→50→75→100%) with its Prometheus success-rate
-# AnalysisRun passing 3/3 (1.0 ≥ 0.95). See docs/VERIFIED.md for the captured
-# run. NOTE: the `helm --wait` calls below are gated by `set -e`, so on a slow
-# host the first chart whose images pull slowly aborts the whole run — rerun
-# (`make down && make up`, images now cached) clears it. A `--wait` retry would
-# remove that sharp edge; tracked separately.
+# Run live on 2026-06-24 on a kind cluster (Docker Desktop): every step
+# below brought its component up, and the demo Argo Rollouts canary completed
+# end to end (25→50→75→100%) with its Prometheus success-rate AnalysisRun
+# passing 3/3 (1.0 ≥ 0.95). See docs/VERIFIED.md. The `helm --wait` calls
+# below are gated by `set -e`, so on a slow host the first chart whose images
+# pull slowly aborts the whole run; rerunning (images now cached) clears it.
 set -euo pipefail
 
 CLUSTER_NAME="stackup"

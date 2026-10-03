@@ -1,11 +1,10 @@
-# kube-prometheus-stack values for the showcase cluster.
+# kube-prometheus-stack values for the local kind cluster.
 #
-# Chart version pinned by the helm install command (see README). All
-# overrides below are intentional — defaults from the chart that aren't
-# mentioned here are accepted as-is.
+# The chart version is pinned in argocd/apps/kube-prometheus-stack.yaml.
+# Chart defaults not mentioned here are accepted as-is.
 
 # -----------------------------------------------------------------------
-# Disable alertmanager (showcase scope: skip alerting; stretch)
+# No alerting: nothing in this stack defines alerts.
 # -----------------------------------------------------------------------
 alertmanager:
   enabled: false
@@ -15,27 +14,21 @@ alertmanager:
 # -----------------------------------------------------------------------
 prometheus:
   prometheusSpec:
-    # CRITICAL: without this the operator filters ServiceMonitor objects
-    # to those carrying the chart's own release label
-    # (release=kps), which means a ServiceMonitor we author in another
-    # release (helm/buyerchat in Phase C) is silently ignored. Setting
-    # this to false makes the operator pick up ANY ServiceMonitor
-    # cluster-wide that matches the (now-empty) selector.
+    # Without this the operator only adopts ServiceMonitors carrying this
+    # chart's own release label (release=kps), so a ServiceMonitor from
+    # another release, such as the demo chart's, would be ignored.
+    # false makes the operator adopt any ServiceMonitor cluster-wide.
     serviceMonitorSelectorNilUsesHelmValues: false
 
-    # Same gotcha for the other selector kinds — we don't author these
-    # in Phase B/C, but flipping them now means a future PodMonitor or
-    # PrometheusRule from another chart will Just Work.
+    # The same applies to PodMonitors, PrometheusRules and Probes from
+    # other charts.
     podMonitorSelectorNilUsesHelmValues: false
     ruleSelectorNilUsesHelmValues: false
     probeSelectorNilUsesHelmValues: false
 
-    # emptyDir storage. SHOWCASE TRADE-OFF: data lives in the pod's
-    # tmpfs and dies on pod restart / kind cluster recycle. Production
-    # would use a PVC backed by a StorageClass (e.g. EBS gp3 / GCE
-    # pd-ssd). For a local kind showcase the laptop's host-path PV
-    # provisioner exists but adds noise without value — losing 24h of
-    # demo metrics on `down.ps1` is fine.
+    # emptyDir storage: data lives in the pod and is gone after a restart
+    # or `make down`. A long-lived install would set a volumeClaimTemplate
+    # here, backed by a StorageClass.
     storageSpec: {}
 
     resources:
@@ -46,8 +39,7 @@ prometheus:
         cpu: 500m
         memory: 1Gi
 
-    # Default scrape interval (per-target overrides happen on the
-    # ServiceMonitor itself).
+    # Default scrape interval (a ServiceMonitor can override it).
     scrapeInterval: 30s
 
 # -----------------------------------------------------------------------
@@ -56,16 +48,14 @@ prometheus:
 grafana:
   enabled: true
 
-  # SHOWCASE-ONLY admin password. NOT a real secret — picked because
-  # it's the chart's own well-known default and recruiters reading the
-  # repo can grep for it without a follow-up question. A production
-  # install would set this via `existingSecret` pointing at a
-  # SealedSecret-decrypted Secret.
+  # The chart's well-known default. Acceptable on a local cluster with no
+  # real data; anything shared should use admin.existingSecret pointing at
+  # a Secret instead.
   adminPassword: prom-operator
 
-  # Grafana stores dashboards/users/datasources in SQLite-on-disk by
-  # default; this volume is also emptyDir for the same reason as
-  # Prometheus above. Re-imports on pod restart take ~5s.
+  # Grafana keeps users and settings in SQLite on disk; without persistence
+  # that is an emptyDir too. Dashboards come from ConfigMaps (see sidecar
+  # below), so they reload on restart.
   persistence:
     enabled: false
 
@@ -89,15 +79,13 @@ grafana:
     annotations:
       cert-manager.io/cluster-issuer: selfsigned
 
-  # ConfigMap-imported dashboards (any ConfigMap in any namespace that
-  # carries the `grafana_dashboard: "1"` label is auto-loaded by the
-  # sidecar). Phase C ships infra/kube-prometheus-stack/dashboards/
-  # buyerchat-configmap.yaml that uses this hook.
+  # The dashboard sidecar loads every ConfigMap labelled
+  # grafana_dashboard: "1". The chart's own dashboards use it.
   sidecar:
     dashboards:
       enabled: true
       label: grafana_dashboard
       labelValue: "1"
-      # All namespaces, not just `monitoring` — keeps the
-      # buyerchat-dashboard ConfigMap optional-on-namespace.
+      # Search every namespace, so a chart can ship its dashboard next to
+      # its workload instead of in `monitoring`.
       searchNamespace: ALL

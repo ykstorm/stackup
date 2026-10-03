@@ -1,20 +1,21 @@
-# ArgoCD values for the showcase cluster.
+# ArgoCD values for the stackup cluster.
 #
-# Values for the upstream chart are nested under its dependency alias
-# `argo-cd` (the dependency name in Chart.yaml).
+# Values for the upstream chart are nested under its dependency name
+# `argo-cd` (see Chart.yaml).
 #
-# Kept minimal: server + repo-server + application-controller, with an
-# ingress on argocd.localtest.me. TLS is terminated at the ingress
-# by cert-manager (the selfsigned ClusterIssuer), and the server runs in
-# insecure mode behind it so there is no double-TLS hop.
+# Kept small: server, repo-server, application-controller and the
+# ApplicationSet controller, with an ingress on argocd.localtest.me. TLS is
+# terminated at the ingress by cert-manager (the selfsigned ClusterIssuer),
+# and the server runs in insecure mode behind it so there is no second TLS
+# hop.
 
 argo-cd:
   configs:
     params:
-      # The ingress terminates TLS via cert-manager. Running the server
-      # insecure (plain HTTP) behind it avoids the controller serving its
-      # own self-signed cert on top of the ingress cert (a redirect loop
-      # / handshake mismatch). Standard pattern for ingress-fronted ArgoCD.
+      # The ingress terminates TLS. Running the server insecure (plain HTTP)
+      # behind it avoids the server serving its own self-signed certificate
+      # under the ingress one (a redirect loop or handshake mismatch). This
+      # is the usual setup for an ArgoCD behind an ingress.
       server.insecure: true
 
   server:
@@ -31,19 +32,14 @@ argo-cd:
     ingress:
       enabled: true
       ingressClassName: nginx
-      # localtest.me resolves to 127.0.0.1, so no /etc/hosts entry is needed.
+      # localtest.me resolves to 127.0.0.1, so no hosts-file entry is needed.
       hostname: argocd.localtest.me
       annotations:
         cert-manager.io/cluster-issuer: selfsigned
       tls: true
-      # The chart names the TLS secret <hostname>-tls when tls: true and
-      # no explicit secret is given; cert-manager fills it via the
-      # selfsigned issuer above.
 
-  # Trim the optional sub-components — not needed for the app-of-apps demo.
+  # Optional components this cluster does not use.
   dex:
     enabled: false
   notifications:
-    enabled: false
-  applicationSet:
     enabled: false

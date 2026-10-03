@@ -1,4 +1,4 @@
-# ingress-nginx values for the kind-based showcase cluster.
+# ingress-nginx values for the single-node kind cluster.
 #
 # Why these settings:
 #
@@ -12,7 +12,7 @@
 # - controller.hostPort.enabled=true
 #   Binds 80/443 on the kind node container itself. Combined with the
 #   extraPortMappings 80→80 / 443→443 in kind/cluster.yaml, the host
-#   laptop sees the controller at https://buyerchat.localtest.me/.
+#   laptop reaches the controller at https://<name>.localtest.me/.
 #
 # - controller.extraArgs.publish-status-address=localhost
 #   Without this, ingress objects' .status.loadBalancer.ingress[].ip is
@@ -38,8 +38,8 @@ controller:
   # still holding, while the old pod stays alive waiting for the new
   # one to become Ready — a deadlock that only manual pod-deletion
   # breaks. Recreate kills the old pod first, then schedules the new
-  # one. Acceptable on a showcase cluster where ~5s of ingress
-  # downtime per upgrade is irrelevant.
+  # one. Acceptable on a local cluster where ~5s of ingress
+  # downtime per upgrade does not matter.
   updateStrategy:
     type: Recreate
   service:
