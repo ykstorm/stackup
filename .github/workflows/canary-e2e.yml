@@ -1,13 +1,13 @@
 name: Canary e2e
 
-# Proves the canary claim for real: spins a kind cluster, installs Argo Rollouts
-# + a live Prometheus, runs steady traffic through the demo workload, then ships
-# a new image and watches Argo Rollouts drive a genuine 25→50→75→100 canary —
-# advancing ONLY because the AnalysisTemplate's real Prometheus success-rate
-# query clears the ≥0.95 gate. No mocked metric, no asserted-by-fiat number.
+# Checks the canary claim on a real cluster: kind, Argo Rollouts, a live
+# Prometheus and steady traffic. A healthy v2 must advance 25, 50, 75, 100
+# because the AnalysisTemplate's Prometheus success-rate query clears the 0.95
+# gate; then a canary whose every request fails must be aborted by the same
+# gate and leave the healthy revision serving.
 #
-# Separate from ci.yml on purpose: this is the heavier live-cluster job, and
-# keeping it out of the CI badge means iterating on it never reds the repo.
+# Kept out of ci.yml because it is the heavy live-cluster job, so working on
+# it does not red the CI badge.
 on:
   workflow_dispatch:
   push:
@@ -18,10 +18,13 @@ on:
       - 'ci/**'
       - '.github/workflows/canary-e2e.yml'
 
+env:
+  ARGO_ROLLOUTS_VERSION: v1.9.0
+
 jobs:
   canary:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -34,15 +37,18 @@ jobs:
         with:
           version: v3.15.0
 
+      # Same controller version the cluster chart pins (infra/argo-rollouts,
+      # appVersion 1.9.0). "latest" broke on 2026-10-03 when v1.10.0 shipped
+      # CRDs too large for client-side apply's last-applied annotation.
       - name: Install kubectl-argo-rollouts plugin
         run: |
-          curl -sSL -o /tmp/kar https://github.com/argoproj/argo-rollouts/releases/latest/download/kubectl-argo-rollouts-linux-amd64
+          curl -sSL -o /tmp/kar https://github.com/argoproj/argo-rollouts/releases/download/${ARGO_ROLLOUTS_VERSION}/kubectl-argo-rollouts-linux-amd64
           chmod +x /tmp/kar && sudo mv /tmp/kar /usr/local/bin/kubectl-argo-rollouts
 
       - name: Install Argo Rollouts controller
         run: |
           kubectl create namespace argo-rollouts
-          kubectl apply -n argo-rollouts -f https://github.com/argoproj/argo-rollouts/releases/latest/download/install.yaml
+          kubectl apply --server-side -n argo-rollouts -f https://github.com/argoproj/argo-rollouts/releases/download/${ARGO_ROLLOUTS_VERSION}/install.yaml
           kubectl -n argo-rollouts rollout status deploy/argo-rollouts --timeout=180s
 
       - name: Build demo image v1 and load into kind
@@ -102,6 +108,35 @@ jobs:
           # have Succeeded — that's the real Prometheus success-rate check passing.
           test "$PHASE" = "Healthy"
           kubectl -n app get analysisrun -o jsonpath='{.items[*].status.phase}' | grep -q Successful
+          # Remember which ReplicaSet is stable now; the failing canary below
+          # must leave it in place.
+          echo "STABLE_RS=$(kubectl get rollout demo -n app -o jsonpath='{.status.stableRS}')" >> "$GITHUB_ENV"
+
+      - name: Ship a canary that fails every request; the gate must abort it
+        run: |
+          # Same v2 image, but FAILURE_RATE=1 makes every /api/work answer 500.
+          # At 25% weight the measured success ratio drops to about 0.75,
+          # under the 0.95 threshold, so the analysis fails twice and aborts.
+          helm upgrade demo helm/demo -n app             -f helm/demo/values.dev.yaml -f helm/demo/values.ci.yaml             --set image.tag=v2 --set failureRate=1
+          echo "Watching the canary; status exits non-zero when the rollout aborts, which is the result we want..."
+          if kubectl argo rollouts status demo -n app --watch --timeout 480s; then
+            echo "The rollout completed although every canary request failed; the gate did not fire."
+            exit 1
+          fi
+
+      - name: Assert the failing canary was rolled back
+        run: |
+          set -e
+          PHASE=$(kubectl get rollout demo -n app -o jsonpath='{.status.phase}')
+          echo "Rollout phase: $PHASE"
+          kubectl argo rollouts get rollout demo -n app --no-color | tee /tmp/rollout-failed.txt
+          kubectl -n app get analysisrun -o custom-columns=NAME:.metadata.name,PHASE:.status.phase | tee /tmp/analysis-failed.txt
+          test "$PHASE" = "Degraded"
+          kubectl -n app get analysisrun -o jsonpath='{.items[*].status.phase}' | grep -q Failed
+          # Stable is still the healthy v2 ReplicaSet from the previous step.
+          test "$(kubectl get rollout demo -n app -o jsonpath='{.status.stableRS}')" = "$STABLE_RS"
+          # And the service answers from it: a sample of requests must succeed.
+          kubectl -n app run probe --rm -i --restart=Never --image=curlimages/curl:8.10.1 --             sh -c 'ok=0; for i in $(seq 1 20); do curl -s -o /dev/null -w "%{http_code}" http://demo.app.svc.cluster.local:3000/api/work | grep -q 200 && ok=$((ok+1)); done; echo "$ok/20 ok"; test "$ok" -ge 18'
 
       - name: Upload proof
         if: always()
@@ -111,3 +146,5 @@ jobs:
           path: |
             /tmp/rollout.txt
             /tmp/analysis.txt
+            /tmp/rollout-failed.txt
+            /tmp/analysis-failed.txt
