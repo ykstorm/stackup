@@ -2,15 +2,7 @@
 
 ## 1. The cluster
 
-```mermaid
-graph TD
-    Host[Laptop: Docker] -->|kind create cluster| Node[kind node: stackup-control-plane]
-    Host -->|ports 80 and 443| Node
-    Node --> CP[API server, scheduler, controller-manager, etcd]
-    Node --> CNI[Calico]
-    Node --> Platform[Platform pods: ArgoCD, Argo Rollouts, ingress-nginx,<br/>cert-manager, Sealed Secrets, Prometheus, Grafana]
-    Node --> Demo[demo pods, namespace app]
-```
+`kind create cluster` starts the cluster as one kind node, `stackup-control-plane`, in the laptop's Docker, and Docker publishes the node's ports 80 and 443 on the host. That node runs the control plane (API server, scheduler, controller-manager, etcd), Calico, the platform pods (ArgoCD, Argo Rollouts, ingress-nginx, cert-manager, Sealed Secrets, Prometheus, Grafana) and the demo pods in the `app` namespace.
 
 `kind/cluster.yaml` defines one node, a control-plane node that also runs every workload. The node is a Docker container running containerd and the kubelet, so pods are containers inside that container.
 
@@ -33,17 +25,7 @@ The whole stack needs about 6 GB of memory for Docker. Below about 4 GB the cont
 
 ## 2. The GitOps tree
 
-```mermaid
-graph LR
-    Git[This repository, main] -->|ArgoCD polls| Root[root Application]
-    Root --> A1[argo-rollouts]
-    Root --> A2[cert-manager]
-    Root --> A3[demo]
-    Root --> A4[ingress-nginx]
-    Root --> A5[kube-prometheus-stack]
-    Root --> A6[sealed-secrets]
-    A3 -->|Rollout| AR[Argo Rollouts controller]
-```
+ArgoCD polls this repository's `main` branch through the `root` Application, which renders six child Applications: argo-rollouts, cert-manager, demo, ingress-nginx, kube-prometheus-stack and sealed-secrets. The demo Application's workload is a Rollout, run by the Argo Rollouts controller.
 
 `argocd/root-app.yaml` renders `argocd/apps/`, a small Helm chart whose templates are the Applications. Each one syncs automatically with prune and self-heal turned on, so git is the source of truth: a resource removed from git is removed from the cluster, and an edit made with `kubectl` is reverted on the next sync. The children sync in three waves (cert-manager and ingress-nginx; kube-prometheus-stack, argo-rollouts and sealed-secrets; the demo), each wave waiting for the previous one to be Healthy. [gitops.md](gitops.md) lists the source of each child.
 
@@ -51,29 +33,13 @@ graph LR
 
 ## 3. The canary
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Dev as Developer
-    participant Git as Git
-    participant CD as ArgoCD
-    participant AR as Argo Rollouts
-    participant Prom as Prometheus
+1. A developer commits a change, for example a new `image.tag`.
+2. ArgoCD polls git every two to three minutes (the pinned chart's 120-second reconciliation timeout plus up to 60 seconds of jitter) and applies the updated Rollout.
+3. Argo Rollouts sets the new version's weight to 25% and pauses for 30 seconds.
+4. After a further 30-second delay it sends the success-rate query over `[2m]` to Prometheus three times, 30 seconds apart. Each result is the ratio of 2xx responses.
 
-    Dev->>Git: commit (for example, bump image.tag)
-    CD->>Git: poll (every 3 minutes)
-    CD->>AR: apply the updated Rollout
-    AR->>AR: setWeight 25, then pause 30s
-    loop 3 measurements, 30s apart, after a 30s delay
-        AR->>Prom: success-rate query over [2m]
-        Prom-->>AR: ratio of 2xx responses
-    end
-    alt at most one measurement below 0.95
-        AR->>AR: setWeight 50, 75, 100 with 30s pauses
-    else two measurements below 0.95
-        AR->>AR: abort: scale the new ReplicaSet down, old version keeps serving
-    end
-```
+       at most one below 0.95: setWeight 50, 75, then 100, 30s pauses between
+       two below 0.95: abort, new ReplicaSet scaled down, old version keeps serving
 
 The query, as `helm/demo/templates/analysis-template.yaml` renders it with the default values:
 
