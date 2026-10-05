@@ -135,14 +135,12 @@ Revert the commit to bring the Rollout back to `Healthy`, and delete the traffic
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    push[git push to main] --> sync[ArgoCD syncs helm/demo]
-    sync --> canary[Rollout: new version on 25% of pods]
-    canary --> analysis[AnalysisRun: success rate from Prometheus]
-    analysis -->|at least 0.95| promote[50%, 75%, then 100%]
-    analysis -->|two failed measurements| abort[Abort: old version keeps serving]
-```
+1. ArgoCD picks up a push to `main` on its next poll and syncs `helm/demo`.
+2. The Rollout sets the new version's weight to 25% and pauses for 30 seconds.
+3. An AnalysisRun queries Prometheus for the success rate three times, 30 seconds apart.
+
+       at most one measurement below 0.95: 50%, 75%, then 100%
+       two measurements below 0.95: abort, the old version keeps serving
 
 [docs/architecture.md](docs/architecture.md) covers the cluster, the ArgoCD tree, and the security settings. [docs/gitops.md](docs/gitops.md) covers the app-of-apps layout, the bootstrap, and the canary in detail.
 
