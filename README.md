@@ -91,7 +91,7 @@ STACKUP_REPO=https://github.com/<you>/stackup make up
    make demo-image DEMO_IMAGE=stackup-demo:v2
    ```
 2. Set `image.tag: v2` in `helm/demo/values.yaml`, commit, and push to the branch ArgoCD tracks.
-3. ArgoCD picks up the commit (it polls every three minutes; Refresh in the UI is faster) and updates the Rollout.
+3. ArgoCD picks up the commit (it polls every two to three minutes; Refresh in the UI is faster) and updates the Rollout.
 4. Watch it:
    ```bash
    make rollout-status   # kubectl argo rollouts get rollout demo -n app --watch
