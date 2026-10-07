@@ -154,6 +154,12 @@ jobs:
           kubectl -n app get analysisrun -o jsonpath='{.items[*].status.phase}' | grep -q Failed
           # Stable is still the healthy v2 ReplicaSet from the previous step.
           test "$(kubectl get rollout demo -n app -o jsonpath='{.status.stableRS}')" = "$STABLE_RS"
+          # The abort scales the canary down, but its pod keeps answering 500s
+          # until it is deleted, and for a moment after the abort kube-proxy
+          # can still send it a request. Wait until it is gone, so the probe
+          # below reaches only the stable pods.
+          kubectl -n app wait --for=delete pod --timeout=90s \
+            -l "app.kubernetes.io/name=demo,rollouts-pod-template-hash!=$STABLE_RS"
           # And the service answers from it: a sample of requests must succeed.
           kubectl -n app run probe --rm -i --restart=Never --image=curlimages/curl:8.10.1 --             sh -c 'ok=0; for i in $(seq 1 20); do curl -s -o /dev/null -w "%{http_code}" http://demo.app.svc.cluster.local:3000/api/work | grep -q 200 && ok=$((ok+1)); done; echo "$ok/20 ok"; test "$ok" -ge 18'
 
