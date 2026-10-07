@@ -2,13 +2,13 @@
 
 ## 1. The cluster
 
-`kind create cluster` starts the cluster as one kind node, `stackup-control-plane`, in the laptop's Docker, and Docker publishes the node's ports 80 and 443 on the host. That node runs the control plane (API server, scheduler, controller-manager, etcd), Calico, the platform pods (ArgoCD, Argo Rollouts, ingress-nginx, cert-manager, Sealed Secrets, Prometheus, Grafana) and the demo pods in the `app` namespace.
+`kind create cluster` starts the cluster as one kind node, `stackup-control-plane`, in the laptop's Docker, and Docker publishes the node's ports 80 and 443 on the host's loopback address. That node runs the control plane (API server, scheduler, controller-manager, etcd), Calico, the platform pods (ArgoCD, Argo Rollouts, ingress-nginx, cert-manager, Sealed Secrets, Prometheus, Grafana) and the demo pods in the `app` namespace.
 
 `kind/cluster.yaml` defines one node, a control-plane node that also runs every workload. The node is a Docker container running containerd and the kubelet, so pods are containers inside that container.
 
 The cluster sets `disableDefaultCNI: true`, so kind's own CNI never starts. `scripts/bootstrap.sh` installs Calico through the tigera-operator instead, because Calico enforces both the ingress and the egress half of a NetworkPolicy. The pod subnet is `192.168.0.0/16`, matching `kind/calico/installation.yaml`.
 
-The node publishes ports 80 and 443 to the host (`extraPortMappings`), and ingress-nginx binds them with hostPort. That is how `https://grafana.localtest.me` on the laptop reaches the controller pod.
+The node publishes ports 80 and 443 to the host (`extraPortMappings`), and ingress-nginx binds them with hostPort. That is how `https://grafana.localtest.me` on the laptop reaches the controller pod. Both mappings set `listenAddress: "127.0.0.1"`, so Docker publishes them on the loopback address only; without it Docker uses `0.0.0.0`, and ArgoCD and Grafana would answer anyone on the laptop's network who sends the right Host header.
 
 The whole stack needs about 6 GB of memory for Docker. Below about 4 GB the controllers crash-loop.
 

@@ -77,7 +77,7 @@ The demo image is built from `apps/demo` and loaded into the kind node; it is no
 
 kind has no LoadBalancer. The ingress works because the kind node publishes ports 80 and 443 to the host (`extraPortMappings` in `kind/cluster.yaml`) and the ingress-nginx controller binds them on the node with hostPort. Check each part:
 
-1. `docker port stackup-control-plane` lists 80 and 443. If it does not, the cluster was created with another configuration; recreate it with `make down && make up`.
+1. `docker port stackup-control-plane` lists 80 and 443 on `127.0.0.1`. If it does not, the cluster was created with another configuration; recreate it with `make down && make up`. The addresses answer only on the laptop itself, so they do not connect from another machine.
 2. `kubectl get pods -n ingress-nginx` shows the controller `Running`.
 3. `kubectl get ingress -A` lists the ArgoCD, Grafana and demo hosts.
 4. Nothing else on the host listens on port 80 or 443. `make preflight` checks this before the cluster exists.

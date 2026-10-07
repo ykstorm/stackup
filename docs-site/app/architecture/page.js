@@ -18,9 +18,10 @@ export default function Architecture() {
         containerd and the kubelet, so pods are containers inside that
         container. The cluster sets <code>disableDefaultCNI: true</code> and
         installs Calico, which enforces both the ingress and the egress half of
-        a NetworkPolicy. The node publishes ports 80 and 443 to the host, where
-        ingress-nginx binds them. The stack needs about 6 GB of memory for
-        Docker.
+        a NetworkPolicy. The node publishes ports 80 and 443 on the
+        host&apos;s loopback address, 127.0.0.1, where ingress-nginx binds
+        them, so the UIs answer only on the laptop itself. The stack needs
+        about 6 GB of memory for Docker.
       </p>
 
       <h2>The GitOps tree</h2>

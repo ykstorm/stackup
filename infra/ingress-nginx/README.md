@@ -29,7 +29,7 @@ laptop:443  --Docker port publish-->  kind node:443  --hostPort-->  ingress-ngin
 
 If `https://grafana.localtest.me/` does not reach the controller, check both halves of that path (`make port-forward` reaches the UIs without it):
 
-1. `docker ps --format '{{.Names}}\t{{.Ports}}' | grep stackup` must show `0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp`. If it does not, the cluster was created without the `extraPortMappings` in `kind/cluster.yaml`; recreate it with `make down && make up`.
+1. `docker ps --format '{{.Names}}\t{{.Ports}}' | grep stackup` must show `127.0.0.1:80->80/tcp, 127.0.0.1:443->443/tcp`. If it does not, the cluster was created without the `extraPortMappings` in `kind/cluster.yaml`; recreate it with `make down && make up`. A cluster created before the mappings had `listenAddress: "127.0.0.1"` shows `0.0.0.0` instead, which means every interface of the laptop; recreate it the same way.
 2. `kubectl get pods -n ingress-nginx` must show the controller pod `1/1 Running`. If it is `Pending`, another pod holds the host port, usually a stale rollout (see the `Recreate` note below).
 
 ## Upgrade strategy

@@ -16,7 +16,7 @@ Documentation site: [ykstorm.github.io/stackup](https://ykstorm.github.io/stacku
 | GitOps | ArgoCD | A root Application renders `argocd/apps/`, which defines six child Applications, and syncs them in waves |
 | Delivery | Argo Rollouts | Runs the demo's canary steps and its analysis gate |
 | Metrics | kube-prometheus-stack | Prometheus and Grafana |
-| Ingress | ingress-nginx | Serves `*.localtest.me` on ports 80 and 443 of the host |
+| Ingress | ingress-nginx | Serves `*.localtest.me` on ports 80 and 443 of the host's loopback address |
 | TLS | cert-manager | Issues certificates from a self-signed ClusterIssuer |
 | Secrets | Sealed Secrets | Controller that decrypts SealedSecret resources inside the cluster |
 | Pod security | Pod Security Admission | The `app` namespace enforces the `restricted` profile |
@@ -30,7 +30,7 @@ The six child Applications are `argo-rollouts`, `cert-manager`, `demo`, `ingress
 - `kind`, `kubectl`, and `helm` 3.15 or newer.
 - The `kubectl-argo-rollouts` plugin, used by `make rollout-status` and `make rollout-ui`.
 - `git` and `bash`, plus `make` for the make targets. On Windows, see [Windows, WSL and macOS](#windows-wsl-and-macos).
-- Ports 80 and 443 free on the host. The kind node publishes them for ingress.
+- Ports 80 and 443 free on the host. The kind node publishes them on 127.0.0.1 for ingress.
 - Network access to GitHub and the Helm chart repositories. ArgoCD installs the components from there.
 
 `make preflight` checks all of these and prints the install command for anything missing.
@@ -54,7 +54,7 @@ The scripts are bash and run the same way on Linux, macOS, WSL and Git Bash.
 - Windows: use WSL 2, with Docker Desktop's WSL integration turned on for the distribution or Docker Engine installed inside WSL. Clone the repository into the Linux file system (`~/stackup`, not `/mnt/c/...`), then `make up`. Git Bash with Docker Desktop works too: run `./setup.sh`, because Git for Windows does not include `make`.
 - PowerShell and cmd cannot run the scripts; `make` started from either stops with a message saying so.
 
-The `*.localtest.me` addresses need Docker to publish the kind node's ports 80 and 443 on the host. Docker Desktop and Docker Engine on Linux do. With Docker Engine inside WSL, Windows reaches those ports only through WSL's localhost forwarding; `make port-forward` serves the same UIs on localhost ports in every setup.
+The `*.localtest.me` addresses need Docker to publish the kind node's ports 80 and 443 on the host. Docker Desktop and Docker Engine on Linux do. `kind/cluster.yaml` sets `listenAddress: "127.0.0.1"` on both mappings, so they are published on the loopback address only: the UIs answer on the laptop itself and not to other machines on its network. With Docker Engine inside WSL, Windows reaches those ports only through WSL's localhost forwarding; `make port-forward` serves the same UIs on localhost ports in every setup. A cluster created before the mappings had `listenAddress` still publishes them on `0.0.0.0`; `make down && make up` recreates it.
 
 [docs/troubleshooting.md](docs/troubleshooting.md) lists the errors seen on Windows and WSL and the fix for each.
 

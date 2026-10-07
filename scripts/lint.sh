@@ -367,6 +367,13 @@ for port in 80 443; do
     fail "kind/cluster.yaml does not publish port $port"
   fi
 done
+mappings="$(grep -c 'containerPort:' kind/cluster.yaml || true)"
+loopback="$(grep -Ec 'listenAddress: "?127\.0\.0\.1"?$' kind/cluster.yaml || true)"
+if [ "$mappings" -gt 0 ] && [ "$loopback" = "$mappings" ]; then
+  ok "kind/cluster.yaml publishes its $mappings ports on 127.0.0.1 only"
+else
+  fail "kind/cluster.yaml: $loopback of $mappings port mappings set listenAddress: \"127.0.0.1\"; without it Docker publishes them on every interface"
+fi
 
 kind_config="$(awk -F= '$1 == "KIND_CONFIG" { print $2 }' scripts/bootstrap.sh)"
 if [ -n "$kind_config" ] && [ -f "$kind_config" ]; then

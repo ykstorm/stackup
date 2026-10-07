@@ -10,7 +10,7 @@ const COMPONENTS = [
   ['GitOps', 'ArgoCD', 'A root Application syncs six child Applications from this repository'],
   ['Delivery', 'Argo Rollouts', "Runs the demo's canary steps and its analysis gate"],
   ['Metrics', 'kube-prometheus-stack', 'Prometheus and Grafana'],
-  ['Ingress', 'ingress-nginx', 'Serves *.localtest.me on ports 80 and 443 of the host'],
+  ['Ingress', 'ingress-nginx', "Serves *.localtest.me on ports 80 and 443 of the host's loopback address"],
   ['TLS', 'cert-manager', 'Certificates from a self-signed ClusterIssuer'],
   ['Secrets', 'Sealed Secrets', 'Decrypts SealedSecret resources inside the cluster'],
   ['Pod security', 'Pod Security Admission', 'The app namespace enforces the restricted profile'],
