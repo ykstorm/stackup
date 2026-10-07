@@ -7,14 +7,27 @@ name: Canary e2e
 # gate and leave the healthy revision serving.
 #
 # Kept out of ci.yml because it is the heavy live-cluster job, so working on
-# it does not red the CI badge.
+# it does not red the CI badge. It runs on pull requests that touch the paths
+# below, so the gate is checked before a change merges, and again on main.
+# ci/ holds the CI Prometheus and the traffic pods, which the job applies.
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'helm/demo/**'
+      - 'apps/demo/**'
+      - 'argocd/**'
+      - 'kind/**'
+      - 'ci/**'
+      - '.github/workflows/canary-e2e.yml'
   push:
     branches: [main]
     paths:
       - 'helm/demo/**'
       - 'apps/demo/**'
+      - 'argocd/**'
+      - 'kind/**'
       - 'ci/**'
       - '.github/workflows/canary-e2e.yml'
 
@@ -38,8 +51,12 @@ jobs:
           version: v3.15.0
 
       # Same controller version the cluster chart pins (infra/argo-rollouts,
-      # appVersion 1.9.0). "latest" broke on 2026-10-03 when v1.10.0 shipped
-      # CRDs too large for client-side apply's last-applied annotation.
+      # appVersion 1.9.0). The job used to apply the "latest" release
+      # client-side. Argo Rollouts v1.10.0 was published on 2026-08-27 with
+      # CRDs too large for client-side apply's last-applied annotation, and
+      # 2026-10-03 was the first run that hit it. Server-side apply below
+      # avoids the annotation; the pin keeps a new release from changing this
+      # job without a commit.
       - name: Install kubectl-argo-rollouts plugin
         run: |
           curl -sSL -o /tmp/kar https://github.com/argoproj/argo-rollouts/releases/download/${ARGO_ROLLOUTS_VERSION}/kubectl-argo-rollouts-linux-amd64
