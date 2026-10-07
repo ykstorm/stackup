@@ -2,9 +2,16 @@ export const metadata = {
   title: 'GitOps & Canary — Stackup',
 };
 
-const QUERY = `sum(rate(http_requests_total{service="demo-canary", rollouts_pod_template_hash="<hash>", code=~"2.."}[2m]))
+const QUERY = `sum(rate(http_requests_total{
+  service="demo-canary",
+  rollouts_pod_template_hash="<hash>",
+  code=~"2.."
+}[2m]))
 /
-sum(rate(http_requests_total{service="demo-canary", rollouts_pod_template_hash="<hash>"}[2m]))`;
+sum(rate(http_requests_total{
+  service="demo-canary",
+  rollouts_pod_template_hash="<hash>"
+}[2m]))`;
 
 export default function GitopsCanary() {
   return (
