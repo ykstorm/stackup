@@ -77,7 +77,7 @@ The demo image is built from `apps/demo` and loaded into the kind node; it is no
 
 kind has no LoadBalancer. The ingress works because the kind node publishes ports 80 and 443 to the host (`extraPortMappings` in `kind/cluster.yaml`) and the ingress-nginx controller binds them on the node with hostPort. Check each part:
 
-1. `docker port stackup-control-plane` lists 80 and 443. If it does not, the cluster was created with another configuration; recreate it with `make down && make up`.
+1. `docker port stackup-control-plane` lists 80 and 443 on `127.0.0.1`. If it does not, the cluster was created with another configuration; recreate it with `make down && make up`. The addresses answer only on the laptop itself, so they do not connect from another machine.
 2. `kubectl get pods -n ingress-nginx` shows the controller `Running`.
 3. `kubectl get ingress -A` lists the ArgoCD, Grafana and demo hosts.
 4. Nothing else on the host listens on port 80 or 443. `make preflight` checks this before the cluster exists.
@@ -103,9 +103,9 @@ Grafana answers `origin not allowed` (HTTP 403) when the host name in the browse
 
 `make up` waits until every Application is Synced and Healthy and prints their states while it waits. The usual causes of a stuck one, and what the repository does about them:
 
-- **The chart cannot be fetched.** An Application whose source returns an error shows `Unknown`. The Sealed Secrets Helm repository index returns 404, so that Application now applies the release manifest kept in `infra/sealed-secrets/controller.yaml`.
+- **The chart cannot be fetched.** An Application whose source returns an error shows `Unknown`. Every upstream chart is pinned to a version, in its Application or in a wrapper chart's `Chart.yaml`, so check that the chart repository answers and still lists that version.
 - **The namespace does not exist.** Every Application that installs into its own namespace sets `CreateNamespace=true`.
-- **A CRD is not there yet.** The children carry sync waves: cert-manager and ingress-nginx first, then kube-prometheus-stack, argo-rollouts and sealed-secrets, then the demo. `infra/argocd/values.yaml` adds the health check that makes the root wait for each wave to be Healthy. Every child also retries a failed sync with backoff.
+- **A CRD is not there yet.** The children carry sync waves: cert-manager and ingress-nginx first, then kube-prometheus-stack and argo-rollouts, then the demo. `infra/argocd/values.yaml` adds the health check that makes the root wait for each wave to be Healthy. Every child also retries a failed sync with backoff.
 - **Two installers own the same objects.** `make up` installs only kind, Calico and ArgoCD itself; everything else belongs to ArgoCD. A cluster created by an older `make up`, which installed the charts with `helm` and then handed them to ArgoCD, can keep conflicts. Recreate it: `make down && make up`.
 
 To see why one is stuck:

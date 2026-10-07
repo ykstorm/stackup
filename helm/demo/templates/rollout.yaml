@@ -14,15 +14,28 @@ spec:
   revisionHistoryLimit: 3
   strategy:
     canary:
+      # Argo Rollouts points these at the canary and the stable pods
+      # (templates/service.yaml). There is no traffic router, so no traffic
+      # goes through them: requests still reach every pod through the main
+      # Service, and the canary one only tells Prometheus which pods to
+      # scrape for the analysis.
+      canaryService: {{ include "demo.fullname" . }}-canary
+      stableService: {{ include "demo.fullname" . }}-stable
       steps:
         - setWeight: 25
         - pause: { duration: {{ .Values.rollout.canary.pauseDuration }} }
         - analysis:
             templates:
               - templateName: {{ include "demo.fullname" . }}-success-rate
+            # The analysis reads only the canary pods: the samples scraped
+            # through the canary Service that carry the pod-template-hash of
+            # the new ReplicaSet (Latest).
             args:
-              - name: service-name
-                value: {{ .Values.serviceName | quote }}
+              - name: canary-service
+                value: {{ include "demo.fullname" . }}-canary
+              - name: canary-hash
+                valueFrom:
+                  podTemplateHashValue: Latest
         - setWeight: 50
         - pause: { duration: {{ .Values.rollout.canary.pauseDuration }} }
         - setWeight: 75

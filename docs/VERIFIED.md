@@ -1,6 +1,6 @@
 # Live verification — stackup
 
-This page records one run, on 2026-06-24, of the bootstrap as it was then: it installed the platform charts with `helm` and handed them to ArgoCD afterwards. The bootstrap has changed since. It now installs only kind, Calico and ArgoCD, applies the CRDs server-side, and lets ArgoCD install every other component in sync waves. No run of the current version is recorded on this page.
+This page records one run, on 2026-06-24, of the bootstrap as it was then: it installed the platform charts with `helm` and handed them to ArgoCD afterwards. The bootstrap has changed since. It now installs only kind, Calico and ArgoCD, applies the CRDs server-side, and lets ArgoCD install every other component in sync waves. The Sealed Secrets controller listed below has since been removed from the stack. No run of the current version is recorded on this page.
 
 **Date:** 2026-06-24
 **Host:** Windows 11 + Docker Desktop (kind v1.35.0 node, 12 vCPU, ~3.7 GB RAM allocated to the Linux engine)
@@ -46,9 +46,13 @@ step 6  pause
 step 8  Healthy ok          → canary complete, stable promoted, 2/2 Available
 ```
 
-The AnalysisRun (`demo-…-2-2`) ran the real success-rate query
-`sum(rate(http_requests_total{code=~"2.."}[2m])) / sum(rate(http_requests_total[2m]))`
-against `prometheus-operated.monitoring.svc:9090`, three times, each returning
+The AnalysisRun (`demo-…-2-2`) ran the success-rate query of that version,
+`sum(rate(http_requests_total{code=~"2.."}[2m])) / sum(rate(http_requests_total[2m]))`,
+against `prometheus-operated.monitoring.svc:9090`. That is the old query: it
+had no `service` matcher and covered every pod. The template today selects the
+canary pods alone, by the canary Service and the new ReplicaSet's
+pod-template-hash (`helm/demo/templates/analysis-template.yaml`). It ran three
+times, each returning
 `1.0` (the demo app's `/metrics` 2xx traffic from health probes), all clearing
 the `≥ 0.95` gate — so the rollout advanced through every weight to 100%.
 

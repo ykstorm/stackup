@@ -3,7 +3,7 @@
 // uses currentColor, so the diagram follows the page's light or dark theme.
 const BOXES = [
   { x: 4, y: 92, w: 124, h: 52, label: 'git push', sub: ['image.tag: v2'] },
-  { x: 182, y: 92, w: 140, h: 52, label: 'ArgoCD sync', sub: ['polls every 3m'] },
+  { x: 182, y: 85, w: 140, h: 66, label: 'ArgoCD sync', sub: ['polls every', '2 to 3 minutes'] },
   { x: 376, y: 92, w: 144, h: 52, label: 'Rollout 25%', sub: ['1 new pod, 2 old'] },
   { x: 594, y: 85, w: 150, h: 66, label: 'AnalysisRun', sub: ['PromQL ≥ 0.95', '3 runs, 30s apart'] },
   { x: 790, y: 16, w: 126, h: 52, label: '50, 75, 100%', sub: ['30s pauses'] },
@@ -25,9 +25,10 @@ export default function CanaryFlow() {
     <svg className="canary-flow" viewBox="0 0 920 236" role="img" aria-labelledby="cf-title cf-desc">
       <title id="cf-title">The demo canary, from a git push to promote or abort</title>
       <desc id="cf-desc">
-        A push changes helm/demo. ArgoCD syncs it and updates the Rollout, which moves to a 25% weight
-        (one new pod next to two old ones) and pauses 30 seconds. An AnalysisRun then queries Prometheus
-        three times, 30 seconds apart. While the success rate stays at or above 0.95 the rollout continues
+        A push changes helm/demo. ArgoCD polls git every two to three minutes, syncs the change and
+        updates the Rollout, which moves to a 25% weight (one new pod next to two old ones) and pauses
+        30 seconds. An AnalysisRun then queries Prometheus for the new pods&apos; success rate three
+        times, 30 seconds apart. While the success rate stays at or above 0.95 the rollout continues
         to 50, 75 and 100 percent with 30-second pauses. After two failed measurements it aborts and the
         old pods keep serving.
       </desc>

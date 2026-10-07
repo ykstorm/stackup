@@ -14,10 +14,17 @@ nodes:
     # resolves to 127.0.0.1 but never reaches the controller. kind cannot
     # change port mappings on an existing cluster, so changing them means
     # recreating it (make down && make up).
+    #
+    # listenAddress keeps them on the loopback address. Without it Docker
+    # publishes them on 0.0.0.0, every interface of the laptop, and anyone on
+    # the same network could reach ArgoCD and Grafana by sending the right
+    # Host header.
     extraPortMappings:
       - containerPort: 80
         hostPort: 80
+        listenAddress: "127.0.0.1"
         protocol: TCP
       - containerPort: 443
         hostPort: 443
+        listenAddress: "127.0.0.1"
         protocol: TCP

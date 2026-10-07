@@ -4,8 +4,8 @@
 # namespace (infra/kube-prometheus-stack/values.yaml). Gated on the
 # ServiceMonitor: without it Prometheus has no demo data to chart.
 #
-# The success-rate panel runs the same query as the AnalysisTemplate;
-# scripts/lint.sh fails if the two drift apart.
+# The success-rate panel runs the AnalysisTemplate's query with one line per
+# pod-template-hash; scripts/lint.sh fails if the two drift apart.
 apiVersion: v1
 kind: ConfigMap
 metadata:

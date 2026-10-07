@@ -13,16 +13,20 @@ image:
 
 replicaCount: 2
 
-# The value the demo app stamps onto the `service` label of every
-# http_requests_total sample (SERVICE_NAME env). The AnalysisTemplate
-# PromQL selects on service="<this>", so the two MUST agree.
+# SERVICE_NAME for the demo app, which writes it into a `service` label on
+# its metrics. The canary gate does not read that label: when Prometheus
+# scrapes a pod through a Service it sets `service` to the Kubernetes
+# Service name and keeps the app's value as `exported_service`
+# (templates/analysis-template.yaml).
 serviceName: demo
 
 # Fraction of /api/work requests the app fails (0..1). Changing it
 # changes the pod template, so it starts a new canary on its own; set
 # it to e.g. "0.5" to ship a bad version without rebuilding the image.
 # Only /api/work is affected, so the gate needs real traffic on that
-# path to see the failures (see ci/traffic.yaml).
+# path to see the failures (see ci/traffic.yaml). The gate measures the
+# canary pods alone, so with that traffic any rate above 0.05 takes them
+# under the 0.95 threshold.
 failureRate: "0"
 
 # Progressive delivery. When false (default) the chart renders a plain
@@ -113,10 +117,12 @@ ingress:
   clusterIssuer: selfsigned
   tlsSecretName: demo-tls
 
-# ServiceMonitor for kube-prometheus-stack to scrape /metrics. The
-# operator (release `kps`) sets serviceMonitorSelectorNilUsesHelmValues
-# =false so it adopts ServiceMonitors cluster-wide; the release label is
-# set anyway as defence-in-depth.
+# ServiceMonitors for kube-prometheus-stack to scrape /metrics: one through
+# the demo Service and, with the Rollout, one through its canary Service for
+# the canary gate (templates/servicemonitor.yaml). The operator (release
+# `kps`) sets serviceMonitorSelectorNilUsesHelmValues=false so it adopts
+# ServiceMonitors cluster-wide; the release label is set anyway as
+# defence-in-depth.
 serviceMonitor:
   enabled: true
   path: /metrics

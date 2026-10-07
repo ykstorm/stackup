@@ -25,15 +25,18 @@ const app = express();
 const SERVICE_NAME = process.env.SERVICE_NAME || "demo";
 const PORT = parseInt(process.env.PORT || "3000", 10);
 // FAILURE_RATE in [0,1]: fraction of /api/work requests that return 500.
-// A "bad" image (e.g. tag v2) sets this > 0.05 so the success-rate query
-// drops below the 0.95 threshold and Argo Rollouts aborts the canary.
+// The chart sets it from failureRate (helm/demo/values.yaml). The canary
+// gate measures the canary pods alone, so a rate above 0.05 takes their
+// success ratio under the 0.95 threshold once /api/work traffic outweighs
+// the probe and scrape requests, and Argo Rollouts aborts the canary.
 const FAILURE_RATE = parseFloat(process.env.FAILURE_RATE || "0");
 
 // Default process/runtime metrics (event loop lag, heap, GC, ...).
 promClient.collectDefaultMetrics({ labels: { service: SERVICE_NAME } });
 
-// The metric the canary analysis reads. labelNames must match the PromQL
-// in the AnalysisTemplate: service, method, path, code.
+// The metric the canary analysis reads; its query matches on `code`. The
+// `service` label set here is kept as `exported_service` when Prometheus
+// scrapes through a Service, and the query matches the Service name instead.
 const httpRequestsTotal = new promClient.Counter({
   name: "http_requests_total",
   help: "Total HTTP requests processed, labelled by service, method, path and status code.",

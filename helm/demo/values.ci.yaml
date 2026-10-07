@@ -1,10 +1,12 @@
 # CI e2e overlay for the canary proof (.github/workflows/canary-e2e.yml).
 #
 # Layered on top of values.dev.yaml. Same Rollout, AnalysisTemplate and
-# Prometheus success-rate gate as the default values; only the timing is
-# compressed so a full 25→50→75→100 canary fits a GitHub runner budget. The
-# analysis still queries a real Prometheus computing the 2xx success ratio
-# from the workload's http_requests_total counter.
+# Prometheus success-rate gate as the default values. It compresses the
+# timing so a full 25, 50, 75, 100 canary fits a GitHub runner budget, and it
+# turns the ServiceMonitor, the NetworkPolicies and the Ingress off again
+# (below), because the CI cluster lacks what they need. The analysis still
+# queries a real Prometheus computing the 2xx success ratio from the
+# workload's http_requests_total counter.
 
 replicaCount: 2
 

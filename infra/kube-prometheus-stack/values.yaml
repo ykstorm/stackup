@@ -48,10 +48,16 @@ prometheus:
 grafana:
   enabled: true
 
-  # The chart's well-known default. Acceptable on a local cluster with no
-  # real data; anything shared should use admin.existingSecret pointing at
-  # a Secret instead.
-  adminPassword: prom-operator
+  # The admin login comes from the grafana-admin Secret in `monitoring`,
+  # which scripts/bootstrap.sh creates with a random password (openssl rand)
+  # before ArgoCD syncs this chart, and keeps on a re-run. The chart then
+  # creates no admin Secret of its own, and no password is in this
+  # repository. Read it with:
+  #   kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
 
   # Grafana keeps users and settings in SQLite on disk; without persistence
   # that is an emptyDir too. Dashboards come from ConfigMaps (see sidecar

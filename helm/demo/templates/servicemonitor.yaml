@@ -5,6 +5,10 @@
 # serviceMonitorSelectorNilUsesHelmValues=false
 # (infra/kube-prometheus-stack/values.yaml) so it adopts ServiceMonitors
 # cluster-wide; the `release: kps` label is set anyway as defence-in-depth.
+#
+# The operator labels every sample with `service`, the name of the Service it
+# was scraped through. This one selects the main Service (component web), so
+# its samples carry service="demo" and cover every pod.
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -24,4 +28,36 @@ spec:
       path: {{ .Values.serviceMonitor.path }}
       interval: {{ .Values.serviceMonitor.interval }}
       scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
+{{- if .Values.rollout.enabled }}
+---
+# The canary gate's data. Selects the Rollout's canary Service, so its
+# samples carry service="{{ include "demo.fullname" . }}-canary", and copies
+# each pod's rollouts-pod-template-hash label onto them as
+# rollouts_pod_template_hash. The AnalysisTemplate filters on both, which
+# leaves only the new ReplicaSet's pods. The canary pods are also scraped
+# through the main Service above; the two sets of samples differ in
+# `service`, so nothing is counted twice.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "demo.fullname" . }}-canary
+  labels:
+    {{- include "demo.labels" . | nindent 4 }}
+    release: {{ .Values.serviceMonitor.releaseLabel }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "demo.name" . }}
+      app.kubernetes.io/component: canary
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  podTargetLabels:
+    - rollouts-pod-template-hash
+  endpoints:
+    - port: {{ .Values.serviceMonitor.port }}
+      path: {{ .Values.serviceMonitor.path }}
+      interval: {{ .Values.serviceMonitor.interval }}
+      scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
+{{- end }}
 {{- end }}

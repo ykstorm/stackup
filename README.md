@@ -1,6 +1,6 @@
 # Stackup
 
-Stackup brings up a single-node Kubernetes cluster on a laptop with one command. kind runs the cluster inside Docker, and ArgoCD keeps it in step with this repository. A small demo service ships through an Argo Rollouts canary: each new version starts on a share of the pods while Prometheus checks the service's HTTP success rate, and the rollout either continues to 100% or rolls back on its own.
+Stackup brings up a single-node Kubernetes cluster on a laptop with one command. kind runs the cluster inside Docker, and ArgoCD keeps it in step with this repository. A small demo service ships through an Argo Rollouts canary: each new version starts on a share of the pods while Prometheus checks the HTTP success rate of those new pods, and the rollout either continues to 100% or rolls back on its own.
 
 [![CI](https://github.com/ykstorm/stackup/actions/workflows/ci.yml/badge.svg)](https://github.com/ykstorm/stackup/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
@@ -13,24 +13,23 @@ Documentation site: [ykstorm.github.io/stackup](https://ykstorm.github.io/stacku
 |---|---|---|
 | Cluster | kind | One Kubernetes node running as a Docker container |
 | Network | Calico | Pod networking and NetworkPolicy enforcement in both directions (kind's default CNI is turned off) |
-| GitOps | ArgoCD | A root Application renders `argocd/apps/`, which defines six child Applications, and syncs them in waves |
+| GitOps | ArgoCD | A root Application renders `argocd/apps/`, which defines five child Applications, and syncs them in waves |
 | Delivery | Argo Rollouts | Runs the demo's canary steps and its analysis gate |
 | Metrics | kube-prometheus-stack | Prometheus and Grafana |
-| Ingress | ingress-nginx | Serves `*.localtest.me` on ports 80 and 443 of the host |
+| Ingress | ingress-nginx | Serves `*.localtest.me` on ports 80 and 443 of the host's loopback address |
 | TLS | cert-manager | Issues certificates from a self-signed ClusterIssuer |
-| Secrets | Sealed Secrets | Controller that decrypts SealedSecret resources inside the cluster |
 | Pod security | Pod Security Admission | The `app` namespace enforces the `restricted` profile |
 | Workload | `demo` (`helm/demo`) | Express service that counts every request in `http_requests_total`; the subject of the canary |
 
-The six child Applications are `argo-rollouts`, `cert-manager`, `demo`, `ingress-nginx`, `kube-prometheus-stack` and `sealed-secrets`.
+The five child Applications are `argo-rollouts`, `cert-manager`, `demo`, `ingress-nginx` and `kube-prometheus-stack`.
 
 ## Prerequisites
 
 - Docker, with at least 6 GB of memory available to it (Docker Desktop: Settings, Resources). Below about 4 GB the controllers crash-loop.
 - `kind`, `kubectl`, and `helm` 3.15 or newer.
 - The `kubectl-argo-rollouts` plugin, used by `make rollout-status` and `make rollout-ui`.
-- `git` and `bash`, plus `make` for the make targets. On Windows, see [Windows, WSL and macOS](#windows-wsl-and-macos).
-- Ports 80 and 443 free on the host. The kind node publishes them for ingress.
+- `git`, `bash` and `openssl` (it generates Grafana's admin password), plus `make` for the make targets. On Windows, see [Windows, WSL and macOS](#windows-wsl-and-macos).
+- Ports 80 and 443 free on the host. The kind node publishes them on 127.0.0.1 for ingress.
 - Network access to GitHub and the Helm chart repositories. ArgoCD installs the components from there.
 
 `make preflight` checks all of these and prints the install command for anything missing.
@@ -42,7 +41,7 @@ git clone https://github.com/ykstorm/stackup && cd stackup
 make up        # or ./setup.sh
 ```
 
-`make up` runs `./setup.sh`, which runs `scripts/preflight.sh` and then `scripts/bootstrap.sh`. The bootstrap creates the kind cluster, installs Calico, creates the `app` namespace, installs ArgoCD (its CRDs first), builds the demo image and loads it into the node, and applies `argocd/root-app.yaml`. From there ArgoCD installs the other components from git in three sync waves: cert-manager and ingress-nginx, then kube-prometheus-stack, Argo Rollouts and Sealed Secrets, then the demo. The script waits until every Application is Synced and Healthy, then prints the addresses below.
+`make up` runs `./setup.sh`, which runs `scripts/preflight.sh` and then `scripts/bootstrap.sh`. The bootstrap creates the kind cluster, installs Calico, creates the `app` namespace, installs ArgoCD (its CRDs first), builds the demo image and loads it into the node, and applies `argocd/root-app.yaml`. From there ArgoCD installs the other components from git in three sync waves: cert-manager and ingress-nginx, then kube-prometheus-stack and Argo Rollouts, then the demo. The script waits until every Application is Synced and Healthy, then prints the addresses below.
 
 The first run pulls every image, so it is the slow one. Running `make up` again reuses the cluster.
 
@@ -54,7 +53,7 @@ The scripts are bash and run the same way on Linux, macOS, WSL and Git Bash.
 - Windows: use WSL 2, with Docker Desktop's WSL integration turned on for the distribution or Docker Engine installed inside WSL. Clone the repository into the Linux file system (`~/stackup`, not `/mnt/c/...`), then `make up`. Git Bash with Docker Desktop works too: run `./setup.sh`, because Git for Windows does not include `make`.
 - PowerShell and cmd cannot run the scripts; `make` started from either stops with a message saying so.
 
-The `*.localtest.me` addresses need Docker to publish the kind node's ports 80 and 443 on the host. Docker Desktop and Docker Engine on Linux do. With Docker Engine inside WSL, Windows reaches those ports only through WSL's localhost forwarding; `make port-forward` serves the same UIs on localhost ports in every setup.
+The `*.localtest.me` addresses need Docker to publish the kind node's ports 80 and 443 on the host. Docker Desktop and Docker Engine on Linux do. `kind/cluster.yaml` sets `listenAddress: "127.0.0.1"` on both mappings, so they are published on the loopback address only: the UIs answer on the laptop itself and not to other machines on its network. With Docker Engine inside WSL, Windows reaches those ports only through WSL's localhost forwarding; `make port-forward` serves the same UIs on localhost ports in every setup. A cluster created before the mappings had `listenAddress` still publishes them on `0.0.0.0`; `make down && make up` recreates it.
 
 [docs/troubleshooting.md](docs/troubleshooting.md) lists the errors seen on Windows and WSL and the fix for each.
 
@@ -62,8 +61,11 @@ The `*.localtest.me` addresses need Docker to publish the kind node's ports 80 a
 
 Hostnames under `localtest.me` resolve to `127.0.0.1`, so there is nothing to add to a hosts file. Certificates come from a self-signed issuer, so the browser warns once per host.
 
-- Grafana: [https://grafana.localtest.me](https://grafana.localtest.me). Log in as `admin` / `prom-operator` (the chart's default; this cluster holds no real data).
-- The canary dashboard: [https://grafana.localtest.me/d/stackup-canary](https://grafana.localtest.me/d/stackup-canary). It ships with the demo chart (`helm/demo/dashboards/canary.json`) and shows the gate's success-rate query against the 0.95 line, requests by status code, 5xx responses by pod, and ready pods per ReplicaSet.
+- Grafana: [https://grafana.localtest.me](https://grafana.localtest.me). Log in as `admin`. `make up` generates the password with `openssl rand` and keeps it in a Secret, so none is stored in this repository; `make up` prints this command at the end:
+  ```bash
+  kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d
+  ```
+- The canary dashboard: [https://grafana.localtest.me/d/stackup-canary](https://grafana.localtest.me/d/stackup-canary). It ships with the demo chart (`helm/demo/dashboards/canary.json`) and shows the gate's success-rate query, one line per ReplicaSet, against the 0.95 line, requests by status code, 5xx responses by pod, and ready pods per ReplicaSet.
 - ArgoCD: [https://argocd.localtest.me](https://argocd.localtest.me). Log in as `admin`; the password is in a Secret:
   ```bash
   kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
@@ -104,17 +106,17 @@ setWeight 25 -> pause 30s -> analysis -> setWeight 50 -> pause 30s
              -> setWeight 75 -> pause 30s -> setWeight 100
 ```
 
-There is no traffic router, so a weight is a share of the pods: with two replicas, the 25% step runs one new pod next to the two old ones.
+There is no traffic router, so a weight is a share of the pods: with two replicas, the 25% step runs one new pod next to the two old ones. The `demo` Service sends requests to all of them.
 
-The analysis step runs the AnalysisTemplate in `helm/demo/templates/analysis-template.yaml`. After a 30-second delay it runs this query against Prometheus three times, 30 seconds apart:
+The analysis step runs the AnalysisTemplate in `helm/demo/templates/analysis-template.yaml`. It judges the new pods alone. The Rollout has a canary Service, `demo-canary`, whose selector Argo Rollouts points at the new pods, and a ServiceMonitor scrapes the pods behind it and copies each pod's `rollouts-pod-template-hash` label onto the samples. After a 30-second delay the analysis runs this query against Prometheus three times, 30 seconds apart, with `<hash>` set to the new ReplicaSet's pod-template-hash:
 
 ```promql
-sum(rate(http_requests_total{service="demo", code=~"2.."}[2m]))
+sum(rate(http_requests_total{service="demo-canary", rollouts_pod_template_hash="<hash>", code=~"2.."}[2m]))
 /
-sum(rate(http_requests_total{service="demo"}[2m]))
+sum(rate(http_requests_total{service="demo-canary", rollouts_pod_template_hash="<hash>"}[2m]))
 ```
 
-A measurement passes when the result is at least 0.95. If two of the three fail, the AnalysisRun fails, Argo Rollouts aborts the update, and the old version keeps serving.
+`service` here is the Kubernetes Service a sample was scraped through, which Prometheus sets; the app's own `service` label is kept as `exported_service`. A measurement passes when the result is at least 0.95, so a new version that fails more than about 5% of its real requests fails it. If two of the three fail, the AnalysisRun fails, Argo Rollouts aborts the update, and the old version keeps serving.
 
 ### Watch it roll back
 
@@ -131,13 +133,13 @@ Revert the commit to bring the Rollout back to `Healthy`, and delete the traffic
 
 ### Checked in CI
 
-[`.github/workflows/canary-e2e.yml`](.github/workflows/canary-e2e.yml) creates a kind cluster on a GitHub runner, installs Argo Rollouts and a small Prometheus, sends steady traffic to the demo, then ships a second image and waits for the canary. The job passes only if the rollout reaches `Healthy` and an AnalysisRun succeeded. It then ships a third revision with `FAILURE_RATE=1`, so every canary request answers 500, and passes only if the gate aborts it: the rollout ends `Degraded`, an AnalysisRun `Failed`, the stable ReplicaSet is the one from the healthy run, and the service still answers 200. The CI values file ([`helm/demo/values.ci.yaml`](helm/demo/values.ci.yaml)) shortens the pauses and the `rate()` window so the run fits a runner; the query and the 0.95 threshold are the same. Last successful run: [2026-10-05](https://github.com/ykstorm/stackup/actions/runs/37333680928).
+[`.github/workflows/canary-e2e.yml`](.github/workflows/canary-e2e.yml) creates a kind cluster on a GitHub runner, installs Argo Rollouts and a small Prometheus, sends steady traffic to the demo, then ships a second image and waits for the canary. The job passes only if the rollout reaches `Healthy` and an AnalysisRun succeeded. It then ships a third revision with `FAILURE_RATE=1`, so every canary request answers 500, and passes only if the gate aborts it: the rollout ends `Degraded`, an AnalysisRun `Failed`, the stable ReplicaSet is the one from the healthy run, and the service still answers 200. The CI values file ([`helm/demo/values.ci.yaml`](helm/demo/values.ci.yaml)) shortens the pauses and the `rate()` window so the run fits a runner, and turns off the ServiceMonitor, the NetworkPolicies and the Ingress, which need components the CI cluster does not have, so the e2e does not test those; the query and the 0.95 threshold are the same. Last successful run: [2026-10-05](https://github.com/ykstorm/stackup/actions/runs/37333680928).
 
 ## Architecture
 
 1. ArgoCD picks up a push to `main` on its next poll and syncs `helm/demo`.
 2. The Rollout sets the new version's weight to 25% and pauses for 30 seconds.
-3. An AnalysisRun queries Prometheus for the success rate three times, 30 seconds apart.
+3. An AnalysisRun queries Prometheus for the new pods' success rate three times, 30 seconds apart.
 
        at most one measurement below 0.95: 50%, 75%, then 100%
        two measurements below 0.95: abort, the old version keeps serving
@@ -169,7 +171,7 @@ Each target runs one script in `scripts/`, so they also work without `make`.
 
 - kind has no LoadBalancer. Ingress uses hostPort 80 and 443 on the single node; `make port-forward` is the way in when those ports are not reachable.
 - Nothing is persisted. Prometheus and Grafana use `emptyDir`, and `make down` deletes the cluster.
-- The Sealed Secrets controller creates a new key for each cluster, so anything sealed against one cluster will not decrypt on the next.
+- There is no way to keep secrets in git. An earlier version installed the Sealed Secrets controller, but nothing in the repository was sealed, and nothing could be: a fresh kind cluster generates a new sealing key each time, so a SealedSecret committed to git would not decrypt on the next `make up`. It was removed rather than kept as a component that does nothing on a laptop cluster. The one secret the stack needs, Grafana's admin password, is generated by `make up`.
 - One node and one workload namespace. More tenants would need more NetworkPolicy and RBAC work.
 - The demo is a stand-in for a real service. It exists so the canary has real request metrics to judge.
 

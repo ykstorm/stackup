@@ -7,18 +7,32 @@ name: Canary e2e
 # gate and leave the healthy revision serving.
 #
 # Kept out of ci.yml because it is the heavy live-cluster job, so working on
-# it does not red the CI badge.
+# it does not red the CI badge. It runs on pull requests that touch the paths
+# below, so the gate is checked before a change merges, and again on main.
+# ci/ holds the CI Prometheus and the traffic pods, which the job applies.
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'helm/demo/**'
+      - 'apps/demo/**'
+      - 'argocd/**'
+      - 'kind/**'
+      - 'ci/**'
+      - '.github/workflows/canary-e2e.yml'
   push:
     branches: [main]
     paths:
       - 'helm/demo/**'
       - 'apps/demo/**'
+      - 'argocd/**'
+      - 'kind/**'
       - 'ci/**'
       - '.github/workflows/canary-e2e.yml'
 
 env:
+  # Keep equal to appVersion in infra/argo-rollouts/Chart.yaml (lint.sh checks).
   ARGO_ROLLOUTS_VERSION: v1.9.0
 
 jobs:
@@ -38,8 +52,12 @@ jobs:
           version: v3.15.0
 
       # Same controller version the cluster chart pins (infra/argo-rollouts,
-      # appVersion 1.9.0). "latest" broke on 2026-10-03 when v1.10.0 shipped
-      # CRDs too large for client-side apply's last-applied annotation.
+      # appVersion 1.9.0). The job used to apply the "latest" release
+      # client-side. Argo Rollouts v1.10.0 was published on 2026-08-27 with
+      # CRDs too large for client-side apply's last-applied annotation, and
+      # 2026-10-03 was the first run that hit it. Server-side apply below
+      # avoids the annotation; the pin keeps a new release from changing this
+      # job without a commit.
       - name: Install kubectl-argo-rollouts plugin
         run: |
           curl -sSL -o /tmp/kar https://github.com/argoproj/argo-rollouts/releases/download/${ARGO_ROLLOUTS_VERSION}/kubectl-argo-rollouts-linux-amd64
@@ -104,6 +122,8 @@ jobs:
           kubectl argo rollouts get rollout demo -n app --no-color | tee /tmp/rollout.txt
           echo "--- AnalysisRuns ---"
           kubectl -n app get analysisrun -o custom-columns=NAME:.metadata.name,PHASE:.status.phase | tee /tmp/analysis.txt
+          # The values the gate measured: the canary pods' own success ratio.
+          kubectl -n app get analysisrun -o jsonpath='{range .items[*]}{.metadata.name}{" measured "}{.status.metricResults[0].measurements[*].value}{"\n"}{end}' | tee -a /tmp/analysis.txt
           # Gate: the rollout must be Healthy AND at least one AnalysisRun must
           # have Succeeded — that's the real Prometheus success-rate check passing.
           test "$PHASE" = "Healthy"
@@ -115,8 +135,9 @@ jobs:
       - name: Ship a canary that fails every request; the gate must abort it
         run: |
           # Same v2 image, but FAILURE_RATE=1 makes every /api/work answer 500.
-          # At 25% weight the measured success ratio drops to about 0.75,
-          # under the 0.95 threshold, so the analysis fails twice and aborts.
+          # The gate measures the canary pod alone, whose only 2xx answers are
+          # kubelet probes and Prometheus scrapes, so its success ratio is
+          # near 0, under the 0.95 threshold; the analysis fails twice and aborts.
           helm upgrade demo helm/demo -n app             -f helm/demo/values.dev.yaml -f helm/demo/values.ci.yaml             --set image.tag=v2 --set failureRate=1
           echo "Watching the canary; status exits non-zero when the rollout aborts, which is the result we want..."
           if kubectl argo rollouts status demo -n app --watch --timeout 480s; then
@@ -131,10 +152,17 @@ jobs:
           echo "Rollout phase: $PHASE"
           kubectl argo rollouts get rollout demo -n app --no-color | tee /tmp/rollout-failed.txt
           kubectl -n app get analysisrun -o custom-columns=NAME:.metadata.name,PHASE:.status.phase | tee /tmp/analysis-failed.txt
+          kubectl -n app get analysisrun -o jsonpath='{range .items[*]}{.metadata.name}{" measured "}{.status.metricResults[0].measurements[*].value}{"\n"}{end}' | tee -a /tmp/analysis-failed.txt
           test "$PHASE" = "Degraded"
           kubectl -n app get analysisrun -o jsonpath='{.items[*].status.phase}' | grep -q Failed
           # Stable is still the healthy v2 ReplicaSet from the previous step.
           test "$(kubectl get rollout demo -n app -o jsonpath='{.status.stableRS}')" = "$STABLE_RS"
+          # The abort scales the canary down, but its pod keeps answering 500s
+          # until it is deleted, and for a moment after the abort kube-proxy
+          # can still send it a request. Wait until it is gone, so the probe
+          # below reaches only the stable pods.
+          kubectl -n app wait --for=delete pod --timeout=90s \
+            -l "app.kubernetes.io/name=demo,rollouts-pod-template-hash!=$STABLE_RS"
           # And the service answers from it: a sample of requests must succeed.
           kubectl -n app run probe --rm -i --restart=Never --image=curlimages/curl:8.10.1 --             sh -c 'ok=0; for i in $(seq 1 20); do curl -s -o /dev/null -w "%{http_code}" http://demo.app.svc.cluster.local:3000/api/work | grep -q 200 && ok=$((ok+1)); done; echo "$ok/20 ok"; test "$ok" -ge 18'
 

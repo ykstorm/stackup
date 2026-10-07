@@ -4,9 +4,13 @@ Prometheus, Grafana, kube-state-metrics, node-exporter and the Prometheus operat
 
 ## Install by hand
 
-On a cluster without ArgoCD:
+On a cluster without ArgoCD. Grafana reads its admin login from the `grafana-admin` Secret, which `make up` creates; by hand, create it first:
 
 ```sh
+kubectl create namespace monitoring
+kubectl create secret generic grafana-admin -n monitoring \
+  --from-literal=admin-user=admin --from-literal=admin-password="$(openssl rand -hex 16)"
+
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update prometheus-community
 
@@ -17,21 +21,25 @@ helm upgrade --install kps prometheus-community/kube-prometheus-stack \
   --wait --timeout 10m
 ```
 
-The release name `kps` matters. The demo chart's ServiceMonitor carries `release: kps`, the Grafana Service is `kps-grafana`, and the ArgoCD Application sets `releaseName: kps`.
+The release name `kps` matters. The demo chart's ServiceMonitors carry `release: kps`, the Grafana Service is `kps-grafana`, and the ArgoCD Application sets `releaseName: kps`.
 
 ## Access
 
 | Where | What |
 |---|---|
-| https://grafana.localtest.me | Grafana. Log in as `admin` / `prom-operator`. |
+| https://grafana.localtest.me | Grafana. Log in as `admin` with the password from the `grafana-admin` Secret (below). |
 | `make port-forward`, then http://localhost:3000 | Grafana through `svc/kps-grafana` port 80 |
 | `make port-forward`, then http://localhost:9090 | The Prometheus UI (`svc/prometheus-operated` port 9090), including `/targets` |
 
-`prom-operator` is the chart's well-known default password. It is acceptable on a local cluster that holds no real data. Anything shared should set `grafana.admin.existingSecret` to a Secret instead, for example one decrypted by Sealed Secrets.
+`values.yaml` sets `grafana.admin.existingSecret: grafana-admin`, so the chart does not create an admin Secret with its well-known default password. `scripts/bootstrap.sh` creates `grafana-admin` in `monitoring` with a random password from `openssl rand` before ArgoCD syncs this chart, and keeps it when `make up` runs again. Read it with:
+
+```sh
+kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d
+```
 
 ## Selector override
 
-By default the operator only adopts ServiceMonitor, PodMonitor, PrometheusRule and Probe objects that carry the chart's own release label. `values.yaml` sets the four `*SelectorNilUsesHelmValues` toggles to `false`, so the operator adopts matching objects from any release in any namespace, including the demo chart's ServiceMonitor.
+By default the operator only adopts ServiceMonitor, PodMonitor, PrometheusRule and Probe objects that carry the chart's own release label. `values.yaml` sets the four `*SelectorNilUsesHelmValues` toggles to `false`, so the operator adopts matching objects from any release in any namespace, including the demo chart's two ServiceMonitors.
 
 ## Storage
 

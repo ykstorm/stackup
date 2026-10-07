@@ -177,13 +177,18 @@ else
   # ------------------------------------------------------------------- #
   expect_count "defaults" "$render_default" Deployment 1
   expect_count "defaults" "$render_default" Rollout 0
+  expect_count "defaults" "$render_default" Service 1
   expect_count "dev" "$render_dev" Rollout 1
   expect_count "dev" "$render_dev" Deployment 0
   expect_count "dev" "$render_dev" AnalysisTemplate 1
-  expect_count "dev" "$render_dev" ServiceMonitor 1
+  # The main Service plus the Rollout's canary and stable Services, and a
+  # ServiceMonitor for the main and the canary Service.
+  expect_count "dev" "$render_dev" Service 3
+  expect_count "dev" "$render_dev" ServiceMonitor 2
   expect_count "dev" "$render_dev" NetworkPolicy 3
   expect_count "dev" "$render_dev" Ingress 1
   expect_count "ci" "$render_ci" Rollout 1
+  expect_count "ci" "$render_ci" Service 3
   expect_count "ci" "$render_ci" ServiceMonitor 0
   expect_count "ci" "$render_ci" NetworkPolicy 0
   expect_count "ci" "$render_ci" Ingress 0
@@ -220,6 +225,14 @@ else
     else
       fail "$overlay: the AnalysisTemplate no longer queries http_requests_total against a threshold"
     fi
+    # The gate judges the canary pods alone: the samples scraped through the
+    # canary Service that carry the new ReplicaSet's pod-template-hash.
+    if [ "$(printf '%s\n' "$gate" | grep -c 'service="{{args.canary-service}}",')" = 2 ] \
+        && [ "$(printf '%s\n' "$gate" | grep -c 'rollouts_pod_template_hash="{{args.canary-hash}}"')" = 2 ]; then
+      ok "$overlay: the gate selects the canary Service and the canary's pod-template-hash"
+    else
+      fail "$overlay: the gate's query no longer selects the canary pods alone"
+    fi
   done
 
   # The image is built from apps/demo and loaded into kind by bootstrap.sh;
@@ -235,6 +248,12 @@ else
     ok "dev: imagePullPolicy IfNotPresent"
   else
     fail "dev: imagePullPolicy is '$policy'; a side-loaded image needs IfNotPresent"
+  fi
+  if [ "$(field "$workload" canaryService)" = demo-canary ] \
+      && printf '%s\n' "$workload" | grep -q 'podTemplateHashValue: Latest'; then
+    ok "dev: the Rollout has a canary Service and passes the canary's pod-template-hash to the gate"
+  else
+    fail "dev: the Rollout lacks canaryService demo-canary or the canary-hash argument"
   fi
 
   section "Canary dashboard"
@@ -263,17 +282,17 @@ else
     kc "kubeconform argocd/apps (rendered)" <<<"$apps_render"
     kc "kubeconform argocd/root-app.yaml" argocd/root-app.yaml
   fi
-  expect_count "argocd/apps" "$apps_render" Application 6
-  for app in argo-rollouts cert-manager demo ingress-nginx kube-prometheus-stack sealed-secrets; do
+  expect_count "argocd/apps" "$apps_render" Application 5
+  for app in argo-rollouts cert-manager demo ingress-nginx kube-prometheus-stack; do
     if ! printf '%s\n' "$apps_render" | grep -q "^  name: $app\$"; then
       fail "argocd/apps: no Application named $app"
     fi
   done
   ssa="$(printf '%s\n' "$apps_render" | grep -c 'ServerSideApply=true' || true)"
-  if [ "$ssa" = 6 ]; then
+  if [ "$ssa" = 5 ]; then
     ok "argocd/apps: every child uses server-side apply (CRDs over 256 KB)"
   else
-    fail "argocd/apps: $ssa of 6 children set ServerSideApply=true"
+    fail "argocd/apps: $ssa of 5 children set ServerSideApply=true"
   fi
   # Pointing the tree at a fork and a revision must change every reference
   # to this repository (bootstrap.sh does this for STACKUP_REPO/REVISION).
@@ -281,10 +300,10 @@ else
   fork_refs="$(printf '%s\n' "$fork_render" | grep -c 'targetRevision: feature' || true)"
   if printf '%s\n' "$fork_render" | grep -q 'ykstorm/stackup'; then
     fail "argocd/apps: a child still names ykstorm/stackup when repoURL is overridden"
-  elif [ "$fork_refs" = 6 ]; then
-    ok "argocd/apps: repoURL and targetRevision reach all 6 sources from this repository"
+  elif [ "$fork_refs" = 5 ]; then
+    ok "argocd/apps: repoURL and targetRevision reach all 5 sources from this repository"
   else
-    fail "argocd/apps: targetRevision override reached $fork_refs of 6 sources"
+    fail "argocd/apps: targetRevision override reached $fork_refs of 5 sources"
   fi
   root_repos="$(awk '$1 == "repoURL:" { print $2 }' argocd/root-app.yaml | sort -u)"
   root_revs="$(awk '$1 == "targetRevision:" { print $2 }' argocd/root-app.yaml | sort -u)"
@@ -348,6 +367,13 @@ for port in 80 443; do
     fail "kind/cluster.yaml does not publish port $port"
   fi
 done
+mappings="$(grep -c 'containerPort:' kind/cluster.yaml || true)"
+loopback="$(grep -Ec 'listenAddress: "?127\.0\.0\.1"?$' kind/cluster.yaml || true)"
+if [ "$mappings" -gt 0 ] && [ "$loopback" = "$mappings" ]; then
+  ok "kind/cluster.yaml publishes its $mappings ports on 127.0.0.1 only"
+else
+  fail "kind/cluster.yaml: $loopback of $mappings port mappings set listenAddress: \"127.0.0.1\"; without it Docker publishes them on every interface"
+fi
 
 kind_config="$(awk -F= '$1 == "KIND_CONFIG" { print $2 }' scripts/bootstrap.sh)"
 if [ -n "$kind_config" ] && [ -f "$kind_config" ]; then
@@ -357,10 +383,8 @@ else
 fi
 
 if [ "$have_kubeconform" = 1 ]; then
-  # -skip: the Sealed Secrets release manifest carries its CRD, which has no
-  # schema of its own to check against.
-  kc "kubeconform raw manifests" -skip CustomResourceDefinition manifests/app/00-namespace.yaml \
-    infra/cert-manager/clusterissuer-selfsigned.yaml infra/sealed-secrets/controller.yaml \
+  kc "kubeconform raw manifests" manifests/app/00-namespace.yaml \
+    infra/cert-manager/clusterissuer-selfsigned.yaml \
     kind/calico/installation.yaml ci/prometheus.yaml ci/traffic.yaml
 else
   missing kubeconform "schema validation of the raw manifests"
@@ -380,15 +404,31 @@ else
   fail "ArgoCD: bootstrap.sh ARGOCD_VERSION $bootstrap_argocd differs from infra/argocd appVersion $argocd_version"
 fi
 
+# Outside the wrapper chart, Argo Rollouts is pinned in preflight's plugin
+# download and in the CI e2e, which installs both the controller and the
+# plugin at ARGO_ROLLOUTS_VERSION. Each must equal the version the cluster's
+# controller runs, the wrapper chart's appVersion. A missing pin fails too,
+# so renaming one cannot turn this check off.
 rollouts_version="$(app_version infra/argo-rollouts/Chart.yaml)"
-pins="$( { grep -rhoE 'ROLLOUTS_VERSION=v[0-9.]+' scripts; \
-           grep -rhoE 'rollouts-plugin-version: *v[0-9.]+' .github; } 2>/dev/null \
-         | grep -oE 'v[0-9.]+$' | sort -u)"
-if [ -z "$pins" ] || [ "$pins" = "$rollouts_version" ]; then
-  ok "Argo Rollouts: the plugin pins match the controller, $rollouts_version"
-else
-  fail "Argo Rollouts: plugin pins $(printf '%s\n' "$pins" | tr '\n' ' ')differ from infra/argo-rollouts appVersion $rollouts_version"
-fi
+# rollouts_pin <file> <name> <value>
+rollouts_pin() {
+  if [ -z "$3" ]; then
+    fail "Argo Rollouts: no $2 found in $1"
+  elif [ "$3" = "$rollouts_version" ]; then
+    ok "Argo Rollouts: $1 pins $2 $3, the controller's appVersion"
+  else
+    fail "Argo Rollouts: $1 pins $2 $3, but infra/argo-rollouts appVersion is $rollouts_version"
+  fi
+}
+rollouts_pin scripts/preflight.sh ROLLOUTS_VERSION \
+  "$(awk -F= '$1 == "ROLLOUTS_VERSION" { print $2 }' scripts/preflight.sh)"
+rollouts_pin .github/workflows/canary-e2e.yml ARGO_ROLLOUTS_VERSION \
+  "$(awk '$1 == "ARGO_ROLLOUTS_VERSION:" { gsub(/"/, "", $2); print $2 }' .github/workflows/canary-e2e.yml)"
+# The setup-k8s-tools action can install the plugin too; check any workflow
+# that passes it a version.
+while IFS= read -r v; do
+  rollouts_pin .github rollouts-plugin-version "$v"
+done < <(grep -rhoE 'rollouts-plugin-version: *v[0-9.]+' .github 2>/dev/null | grep -oE 'v[0-9.]+$' | sort -u)
 
 # The wrapper charts' appVersion must be the upstream chart's, once the
 # dependency has been downloaded.
