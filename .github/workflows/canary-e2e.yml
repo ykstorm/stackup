@@ -32,6 +32,7 @@ on:
       - '.github/workflows/canary-e2e.yml'
 
 env:
+  # Keep equal to appVersion in infra/argo-rollouts/Chart.yaml (lint.sh checks).
   ARGO_ROLLOUTS_VERSION: v1.9.0
 
 jobs:

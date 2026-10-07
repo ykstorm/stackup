@@ -404,15 +404,31 @@ else
   fail "ArgoCD: bootstrap.sh ARGOCD_VERSION $bootstrap_argocd differs from infra/argocd appVersion $argocd_version"
 fi
 
+# Outside the wrapper chart, Argo Rollouts is pinned in preflight's plugin
+# download and in the CI e2e, which installs both the controller and the
+# plugin at ARGO_ROLLOUTS_VERSION. Each must equal the version the cluster's
+# controller runs, the wrapper chart's appVersion. A missing pin fails too,
+# so renaming one cannot turn this check off.
 rollouts_version="$(app_version infra/argo-rollouts/Chart.yaml)"
-pins="$( { grep -rhoE 'ROLLOUTS_VERSION=v[0-9.]+' scripts; \
-           grep -rhoE 'rollouts-plugin-version: *v[0-9.]+' .github; } 2>/dev/null \
-         | grep -oE 'v[0-9.]+$' | sort -u)"
-if [ -z "$pins" ] || [ "$pins" = "$rollouts_version" ]; then
-  ok "Argo Rollouts: the plugin pins match the controller, $rollouts_version"
-else
-  fail "Argo Rollouts: plugin pins $(printf '%s\n' "$pins" | tr '\n' ' ')differ from infra/argo-rollouts appVersion $rollouts_version"
-fi
+# rollouts_pin <file> <name> <value>
+rollouts_pin() {
+  if [ -z "$3" ]; then
+    fail "Argo Rollouts: no $2 found in $1"
+  elif [ "$3" = "$rollouts_version" ]; then
+    ok "Argo Rollouts: $1 pins $2 $3, the controller's appVersion"
+  else
+    fail "Argo Rollouts: $1 pins $2 $3, but infra/argo-rollouts appVersion is $rollouts_version"
+  fi
+}
+rollouts_pin scripts/preflight.sh ROLLOUTS_VERSION \
+  "$(awk -F= '$1 == "ROLLOUTS_VERSION" { print $2 }' scripts/preflight.sh)"
+rollouts_pin .github/workflows/canary-e2e.yml ARGO_ROLLOUTS_VERSION \
+  "$(awk '$1 == "ARGO_ROLLOUTS_VERSION:" { gsub(/"/, "", $2); print $2 }' .github/workflows/canary-e2e.yml)"
+# The setup-k8s-tools action can install the plugin too; check any workflow
+# that passes it a version.
+while IFS= read -r v; do
+  rollouts_pin .github rollouts-plugin-version "$v"
+done < <(grep -rhoE 'rollouts-plugin-version: *v[0-9.]+' .github 2>/dev/null | grep -oE 'v[0-9.]+$' | sort -u)
 
 # The wrapper charts' appVersion must be the upstream chart's, once the
 # dependency has been downloaded.
