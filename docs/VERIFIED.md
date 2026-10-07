@@ -46,9 +46,13 @@ step 6  pause
 step 8  Healthy ok          → canary complete, stable promoted, 2/2 Available
 ```
 
-The AnalysisRun (`demo-…-2-2`) ran the real success-rate query
-`sum(rate(http_requests_total{code=~"2.."}[2m])) / sum(rate(http_requests_total[2m]))`
-against `prometheus-operated.monitoring.svc:9090`, three times, each returning
+The AnalysisRun (`demo-…-2-2`) ran the success-rate query of that version,
+`sum(rate(http_requests_total{code=~"2.."}[2m])) / sum(rate(http_requests_total[2m]))`,
+against `prometheus-operated.monitoring.svc:9090`. That is the old query: it
+had no `service` matcher and covered every pod. The template today selects the
+canary pods alone, by the canary Service and the new ReplicaSet's
+pod-template-hash (`helm/demo/templates/analysis-template.yaml`). It ran three
+times, each returning
 `1.0` (the demo app's `/metrics` 2xx traffic from health probes), all clearing
 the `≥ 0.95` gate — so the rollout advanced through every weight to 100%.
 

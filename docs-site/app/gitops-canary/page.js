@@ -20,8 +20,8 @@ export default function GitopsCanary() {
         Build the new image into kind with{' '}
         <code>make demo-image DEMO_IMAGE=stackup-demo:v2</code>, then bump{' '}
         <code>image.tag</code> in <code>helm/demo/values.yaml</code>, commit, and
-        push. ArgoCD polls the repository every three minutes, syncs the change,
-        and Argo Rollouts starts a new revision. Watch it:
+        push. ArgoCD polls the repository every two to three minutes, syncs the
+        change, and Argo Rollouts starts a new revision. Watch it:
       </p>
       <pre>
         <code>{`make rollout-status
