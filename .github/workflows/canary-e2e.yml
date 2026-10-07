@@ -122,6 +122,8 @@ jobs:
           kubectl argo rollouts get rollout demo -n app --no-color | tee /tmp/rollout.txt
           echo "--- AnalysisRuns ---"
           kubectl -n app get analysisrun -o custom-columns=NAME:.metadata.name,PHASE:.status.phase | tee /tmp/analysis.txt
+          # The values the gate measured: the canary pods' own success ratio.
+          kubectl -n app get analysisrun -o jsonpath='{range .items[*]}{.metadata.name}{" measured "}{.status.metricResults[0].measurements[*].value}{"\n"}{end}' | tee -a /tmp/analysis.txt
           # Gate: the rollout must be Healthy AND at least one AnalysisRun must
           # have Succeeded — that's the real Prometheus success-rate check passing.
           test "$PHASE" = "Healthy"
@@ -150,6 +152,7 @@ jobs:
           echo "Rollout phase: $PHASE"
           kubectl argo rollouts get rollout demo -n app --no-color | tee /tmp/rollout-failed.txt
           kubectl -n app get analysisrun -o custom-columns=NAME:.metadata.name,PHASE:.status.phase | tee /tmp/analysis-failed.txt
+          kubectl -n app get analysisrun -o jsonpath='{range .items[*]}{.metadata.name}{" measured "}{.status.metricResults[0].measurements[*].value}{"\n"}{end}' | tee -a /tmp/analysis-failed.txt
           test "$PHASE" = "Degraded"
           kubectl -n app get analysisrun -o jsonpath='{.items[*].status.phase}' | grep -q Failed
           # Stable is still the healthy v2 ReplicaSet from the previous step.
