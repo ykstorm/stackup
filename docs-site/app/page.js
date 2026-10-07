@@ -56,7 +56,7 @@ make up        # or ./setup.sh`}</code>
           the <code>kubectl-argo-rollouts</code> plugin
         </li>
         <li>
-          <code>git</code>, <code>bash</code> and <code>make</code> (on Windows, WSL, or Git Bash with{' '}
+          <code>git</code>, <code>bash</code>, <code>openssl</code> and <code>make</code> (on Windows, WSL, or Git Bash with{' '}
           <code>./setup.sh</code>)
         </li>
         <li>ports 80 and 443 free on the host</li>
