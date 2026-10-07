@@ -115,8 +115,9 @@ jobs:
       - name: Ship a canary that fails every request; the gate must abort it
         run: |
           # Same v2 image, but FAILURE_RATE=1 makes every /api/work answer 500.
-          # At 25% weight the measured success ratio drops to about 0.75,
-          # under the 0.95 threshold, so the analysis fails twice and aborts.
+          # The gate measures the canary pod alone, whose only 2xx answers are
+          # kubelet probes and Prometheus scrapes, so its success ratio is
+          # near 0, under the 0.95 threshold; the analysis fails twice and aborts.
           helm upgrade demo helm/demo -n app             -f helm/demo/values.dev.yaml -f helm/demo/values.ci.yaml             --set image.tag=v2 --set failureRate=1
           echo "Watching the canary; status exits non-zero when the rollout aborts, which is the result we want..."
           if kubectl argo rollouts status demo -n app --watch --timeout 480s; then

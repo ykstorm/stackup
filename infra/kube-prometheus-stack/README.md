@@ -17,7 +17,7 @@ helm upgrade --install kps prometheus-community/kube-prometheus-stack \
   --wait --timeout 10m
 ```
 
-The release name `kps` matters. The demo chart's ServiceMonitor carries `release: kps`, the Grafana Service is `kps-grafana`, and the ArgoCD Application sets `releaseName: kps`.
+The release name `kps` matters. The demo chart's ServiceMonitors carry `release: kps`, the Grafana Service is `kps-grafana`, and the ArgoCD Application sets `releaseName: kps`.
 
 ## Access
 
@@ -31,7 +31,7 @@ The release name `kps` matters. The demo chart's ServiceMonitor carries `release
 
 ## Selector override
 
-By default the operator only adopts ServiceMonitor, PodMonitor, PrometheusRule and Probe objects that carry the chart's own release label. `values.yaml` sets the four `*SelectorNilUsesHelmValues` toggles to `false`, so the operator adopts matching objects from any release in any namespace, including the demo chart's ServiceMonitor.
+By default the operator only adopts ServiceMonitor, PodMonitor, PrometheusRule and Probe objects that carry the chart's own release label. `values.yaml` sets the four `*SelectorNilUsesHelmValues` toggles to `false`, so the operator adopts matching objects from any release in any namespace, including the demo chart's two ServiceMonitors.
 
 ## Storage
 

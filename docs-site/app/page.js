@@ -2,7 +2,7 @@ import Link from 'next/link';
 import CanaryFlow from './components/CanaryFlow';
 
 const GATE_QUERY =
-  'sum(rate(http_requests_total{service="demo", code=~"2.."}[2m])) / sum(rate(http_requests_total{service="demo"}[2m]))';
+  'sum(rate(http_requests_total{service="demo-canary", rollouts_pod_template_hash="<hash>", code=~"2.."}[2m])) / sum(rate(http_requests_total{service="demo-canary", rollouts_pod_template_hash="<hash>"}[2m]))';
 
 const COMPONENTS = [
   ['Cluster', 'kind', 'One Kubernetes node running as a Docker container'],
@@ -25,7 +25,7 @@ export default function Home() {
         Stackup brings up a single-node Kubernetes cluster on a laptop with one command. kind runs the
         cluster inside Docker, and ArgoCD keeps it in step with this repository. A small demo service
         ships through an Argo Rollouts canary: each new version starts on a share of the pods while
-        Prometheus checks the service&apos;s HTTP success rate, and the rollout either continues to 100%
+        Prometheus checks the HTTP success rate of those new pods, and the rollout either continues to 100%
         or rolls back on its own.
       </p>
 
@@ -72,8 +72,9 @@ make up        # or ./setup.sh`}</code>
         </div>
         <figcaption>
           The demo canary with the default values in <code>helm/demo</code>. The AnalysisRun computes{' '}
-          <code>{GATE_QUERY}</code>, the share of requests that returned a 2xx status across old and new
-          pods. One failed measurement is tolerated; a second aborts the update.
+          <code>{GATE_QUERY}</code>, the share of requests to the new pods that returned a 2xx status, where{' '}
+          <code>&lt;hash&gt;</code> is the new ReplicaSet&apos;s pod-template-hash. One failed measurement is
+          tolerated; a second aborts the update.
         </figcaption>
       </figure>
 
@@ -95,7 +96,7 @@ make up        # or ./setup.sh`}</code>
             <a href="https://grafana.localtest.me/d/stackup-canary">grafana.localtest.me/d/stackup-canary</a>
           </p>
           <p>
-            The canary dashboard: the gate&apos;s success rate against the 0.95 line, requests by status code,
+            The canary dashboard: the gate&apos;s success rate per ReplicaSet against the 0.95 line, requests by status code,
             5xx responses by pod, and ready pods per ReplicaSet. Log in as <code>admin</code> /{' '}
             <code>prom-operator</code>.
           </p>

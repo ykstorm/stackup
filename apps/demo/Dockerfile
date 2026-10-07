@@ -7,9 +7,12 @@
 # side-loads it so ImagePullPolicy=IfNotPresent resolves locally):
 #   kind load docker-image stackup-demo:v1 --name stackup
 #
-# A "bad" build for the rollback demo just bakes a higher failure rate:
-#   docker build -t stackup-demo:v2 --build-arg FAILURE_RATE=0.3 apps/demo
-#   kind load docker-image stackup-demo:v2 --name stackup
+# A bad version for the rollback demo is a chart value, not a new image: the
+# chart always sets FAILURE_RATE in the pod from failureRate in
+# helm/demo/values.yaml, and that overrides the ENV below. The canary gate
+# measures the canary pods alone, so any failureRate above 0.05 fails it once
+# real traffic reaches them (ci/traffic.yaml); the CI e2e uses
+# --set failureRate=1.
 FROM node:20-alpine
 
 WORKDIR /app
@@ -21,8 +24,8 @@ RUN npm ci --omit=dev
 
 COPY server.js ./
 
-# Default failure rate baked into the image; override per-build for the
-# rollback demo, or at runtime via the FAILURE_RATE env var.
+# Default failure rate for the image run on its own (docker run -e
+# FAILURE_RATE=0.3 ...). Under the chart the pod's FAILURE_RATE replaces it.
 ARG FAILURE_RATE=0
 ENV FAILURE_RATE=${FAILURE_RATE}
 ENV PORT=3000

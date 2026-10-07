@@ -1,6 +1,6 @@
 # Stackup
 
-Stackup brings up a single-node Kubernetes cluster on a laptop with one command. kind runs the cluster inside Docker, and ArgoCD keeps it in step with this repository. A small demo service ships through an Argo Rollouts canary: each new version starts on a share of the pods while Prometheus checks the service's HTTP success rate, and the rollout either continues to 100% or rolls back on its own.
+Stackup brings up a single-node Kubernetes cluster on a laptop with one command. kind runs the cluster inside Docker, and ArgoCD keeps it in step with this repository. A small demo service ships through an Argo Rollouts canary: each new version starts on a share of the pods while Prometheus checks the HTTP success rate of those new pods, and the rollout either continues to 100% or rolls back on its own.
 
 [![CI](https://github.com/ykstorm/stackup/actions/workflows/ci.yml/badge.svg)](https://github.com/ykstorm/stackup/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
@@ -63,7 +63,7 @@ The `*.localtest.me` addresses need Docker to publish the kind node's ports 80 a
 Hostnames under `localtest.me` resolve to `127.0.0.1`, so there is nothing to add to a hosts file. Certificates come from a self-signed issuer, so the browser warns once per host.
 
 - Grafana: [https://grafana.localtest.me](https://grafana.localtest.me). Log in as `admin` / `prom-operator` (the chart's default; this cluster holds no real data).
-- The canary dashboard: [https://grafana.localtest.me/d/stackup-canary](https://grafana.localtest.me/d/stackup-canary). It ships with the demo chart (`helm/demo/dashboards/canary.json`) and shows the gate's success-rate query against the 0.95 line, requests by status code, 5xx responses by pod, and ready pods per ReplicaSet.
+- The canary dashboard: [https://grafana.localtest.me/d/stackup-canary](https://grafana.localtest.me/d/stackup-canary). It ships with the demo chart (`helm/demo/dashboards/canary.json`) and shows the gate's success-rate query, one line per ReplicaSet, against the 0.95 line, requests by status code, 5xx responses by pod, and ready pods per ReplicaSet.
 - ArgoCD: [https://argocd.localtest.me](https://argocd.localtest.me). Log in as `admin`; the password is in a Secret:
   ```bash
   kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
@@ -104,17 +104,17 @@ setWeight 25 -> pause 30s -> analysis -> setWeight 50 -> pause 30s
              -> setWeight 75 -> pause 30s -> setWeight 100
 ```
 
-There is no traffic router, so a weight is a share of the pods: with two replicas, the 25% step runs one new pod next to the two old ones.
+There is no traffic router, so a weight is a share of the pods: with two replicas, the 25% step runs one new pod next to the two old ones. The `demo` Service sends requests to all of them.
 
-The analysis step runs the AnalysisTemplate in `helm/demo/templates/analysis-template.yaml`. After a 30-second delay it runs this query against Prometheus three times, 30 seconds apart:
+The analysis step runs the AnalysisTemplate in `helm/demo/templates/analysis-template.yaml`. It judges the new pods alone. The Rollout has a canary Service, `demo-canary`, whose selector Argo Rollouts points at the new pods, and a ServiceMonitor scrapes the pods behind it and copies each pod's `rollouts-pod-template-hash` label onto the samples. After a 30-second delay the analysis runs this query against Prometheus three times, 30 seconds apart, with `<hash>` set to the new ReplicaSet's pod-template-hash:
 
 ```promql
-sum(rate(http_requests_total{service="demo", code=~"2.."}[2m]))
+sum(rate(http_requests_total{service="demo-canary", rollouts_pod_template_hash="<hash>", code=~"2.."}[2m]))
 /
-sum(rate(http_requests_total{service="demo"}[2m]))
+sum(rate(http_requests_total{service="demo-canary", rollouts_pod_template_hash="<hash>"}[2m]))
 ```
 
-A measurement passes when the result is at least 0.95. If two of the three fail, the AnalysisRun fails, Argo Rollouts aborts the update, and the old version keeps serving.
+`service` here is the Kubernetes Service a sample was scraped through, which Prometheus sets; the app's own `service` label is kept as `exported_service`. A measurement passes when the result is at least 0.95, so a new version that fails more than about 5% of its real requests fails it. If two of the three fail, the AnalysisRun fails, Argo Rollouts aborts the update, and the old version keeps serving.
 
 ### Watch it roll back
 
@@ -137,7 +137,7 @@ Revert the commit to bring the Rollout back to `Healthy`, and delete the traffic
 
 1. ArgoCD picks up a push to `main` on its next poll and syncs `helm/demo`.
 2. The Rollout sets the new version's weight to 25% and pauses for 30 seconds.
-3. An AnalysisRun queries Prometheus for the success rate three times, 30 seconds apart.
+3. An AnalysisRun queries Prometheus for the new pods' success rate three times, 30 seconds apart.
 
        at most one measurement below 0.95: 50%, 75%, then 100%
        two measurements below 0.95: abort, the old version keeps serving

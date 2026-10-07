@@ -36,28 +36,28 @@ ArgoCD polls this repository's `main` branch through the `root` Application, whi
 1. A developer commits a change, for example a new `image.tag`.
 2. ArgoCD polls git every two to three minutes (the pinned chart's 120-second reconciliation timeout plus up to 60 seconds of jitter) and applies the updated Rollout.
 3. Argo Rollouts sets the new version's weight to 25% and pauses for 30 seconds.
-4. After a further 30-second delay it sends the success-rate query over `[2m]` to Prometheus three times, 30 seconds apart. Each result is the ratio of 2xx responses.
+4. After a further 30-second delay it sends the success-rate query over `[2m]` to Prometheus three times, 30 seconds apart. Each result is the ratio of 2xx responses from the new pods.
 
        at most one below 0.95: setWeight 50, 75, then 100, 30s pauses between
        two below 0.95: abort, new ReplicaSet scaled down, old version keeps serving
 
-The query, as `helm/demo/templates/analysis-template.yaml` renders it with the default values:
+The query, as `helm/demo/templates/analysis-template.yaml` renders it with the default values. Argo Rollouts fills in `<hash>`, the pod-template-hash of the new ReplicaSet, when the analysis starts:
 
 ```promql
-sum(rate(http_requests_total{service="demo", code=~"2.."}[2m]))
+sum(rate(http_requests_total{service="demo-canary", rollouts_pod_template_hash="<hash>", code=~"2.."}[2m]))
 /
-sum(rate(http_requests_total{service="demo"}[2m]))
+sum(rate(http_requests_total{service="demo-canary", rollouts_pod_template_hash="<hash>"}[2m]))
 ```
 
-It covers every pod behind the `demo` Service, old and new, so the result is the success rate of the service as a whole while the canary is part of it. [gitops.md](gitops.md) explains the weights and the failure rule in detail.
+It covers only the new pods: `demo-canary` is the Rollout's canary Service, which Argo Rollouts points at the new ReplicaSet, and the hash leaves out samples the Service collected from the stable pods before that switch. Requests still reach every pod through the `demo` Service. [gitops.md](gitops.md) explains the weights, the labels and the failure rule in detail.
 
 ## 4. Metrics
 
 The demo app (`apps/demo/server.js`) uses prom-client. Every response increments `http_requests_total{service, method, path, code}`, and `GET /metrics` serves it along with the default Node.js process metrics.
 
-The chart's ServiceMonitor has the Prometheus operator from kube-prometheus-stack (release `kps`) scrape `/metrics` every 30 seconds. Grafana reads from that Prometheus and comes with the chart's standard Kubernetes dashboards. There is no alerting and no log or trace pipeline: the stack collects metrics only.
+The chart's two ServiceMonitors have the Prometheus operator from kube-prometheus-stack (release `kps`) scrape `/metrics` every 30 seconds: one through the `demo` Service, for every pod, and one through the `demo-canary` Service, which also copies each pod's `rollouts-pod-template-hash` label onto the samples for the canary gate. The operator labels each sample with `service`, the Service it came through, and keeps the app's own `service` label as `exported_service`. Grafana reads from that Prometheus and comes with the chart's standard Kubernetes dashboards. There is no alerting and no log or trace pipeline: the stack collects metrics only.
 
-The demo chart adds one dashboard, `helm/demo/dashboards/canary.json` (uid `stackup-canary`), as a ConfigMap that Grafana's sidecar loads. Its top panel runs the gate's query against the 0.95 line, and `make lint` fails if the two drift apart. The other panels show requests by status code, 5xx responses by pod, and ready pods per ReplicaSet (from kube-state-metrics), so a canary step or an abort is visible as one ReplicaSet gaining pods and another losing them.
+The demo chart adds one dashboard, `helm/demo/dashboards/canary.json` (uid `stackup-canary`), as a ConfigMap that Grafana's sidecar loads. Its top panel runs the gate's query with one line per pod-template-hash against the 0.95 line, and `make lint` fails if the two drift apart. The other panels show requests by status code, 5xx responses by pod, and ready pods per ReplicaSet (from kube-state-metrics), so a canary step or an abort is visible as one ReplicaSet gaining pods and another losing them.
 
 Prometheus and Grafana use `emptyDir` volumes, so their data does not survive a pod restart or `make down`.
 

@@ -30,9 +30,19 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: app
+  # Argo Rollouts writes rollouts-pod-template-hash into the selectors of
+  # demo-canary and demo-stable, which git never has. A Service selector is
+  # replaced as a whole by a server-side apply, so without this every sync
+  # would reset both Services to select every pod until Argo Rollouts set
+  # them again. RespectIgnoreDifferences keeps the live value during a sync.
+  ignoreDifferences:
+    - kind: Service
+      jsonPointers:
+        - /spec/selector/rollouts-pod-template-hash
   syncPolicy:
     {{- include "stackup.syncPolicy" . | nindent 4 }}
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
       - SkipDryRunOnMissingResource=true
+      - RespectIgnoreDifferences=true

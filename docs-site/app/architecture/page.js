@@ -53,7 +53,8 @@ export default function Architecture() {
         The demo app counts every response in{' '}
         <code>http_requests_total</code>, labelled by service, method, path and
         status code. kube-prometheus-stack scrapes it through the chart&apos;s
-        ServiceMonitor:
+        two ServiceMonitors, one for every pod and one for the canary pods
+        alone, which the canary gate reads:
       </p>
       <table>
         <thead>

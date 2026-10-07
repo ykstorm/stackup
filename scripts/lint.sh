@@ -177,13 +177,18 @@ else
   # ------------------------------------------------------------------- #
   expect_count "defaults" "$render_default" Deployment 1
   expect_count "defaults" "$render_default" Rollout 0
+  expect_count "defaults" "$render_default" Service 1
   expect_count "dev" "$render_dev" Rollout 1
   expect_count "dev" "$render_dev" Deployment 0
   expect_count "dev" "$render_dev" AnalysisTemplate 1
-  expect_count "dev" "$render_dev" ServiceMonitor 1
+  # The main Service plus the Rollout's canary and stable Services, and a
+  # ServiceMonitor for the main and the canary Service.
+  expect_count "dev" "$render_dev" Service 3
+  expect_count "dev" "$render_dev" ServiceMonitor 2
   expect_count "dev" "$render_dev" NetworkPolicy 3
   expect_count "dev" "$render_dev" Ingress 1
   expect_count "ci" "$render_ci" Rollout 1
+  expect_count "ci" "$render_ci" Service 3
   expect_count "ci" "$render_ci" ServiceMonitor 0
   expect_count "ci" "$render_ci" NetworkPolicy 0
   expect_count "ci" "$render_ci" Ingress 0
@@ -220,6 +225,14 @@ else
     else
       fail "$overlay: the AnalysisTemplate no longer queries http_requests_total against a threshold"
     fi
+    # The gate judges the canary pods alone: the samples scraped through the
+    # canary Service that carry the new ReplicaSet's pod-template-hash.
+    if [ "$(printf '%s\n' "$gate" | grep -c 'service="{{args.canary-service}}",')" = 2 ] \
+        && [ "$(printf '%s\n' "$gate" | grep -c 'rollouts_pod_template_hash="{{args.canary-hash}}"')" = 2 ]; then
+      ok "$overlay: the gate selects the canary Service and the canary's pod-template-hash"
+    else
+      fail "$overlay: the gate's query no longer selects the canary pods alone"
+    fi
   done
 
   # The image is built from apps/demo and loaded into kind by bootstrap.sh;
@@ -235,6 +248,12 @@ else
     ok "dev: imagePullPolicy IfNotPresent"
   else
     fail "dev: imagePullPolicy is '$policy'; a side-loaded image needs IfNotPresent"
+  fi
+  if [ "$(field "$workload" canaryService)" = demo-canary ] \
+      && printf '%s\n' "$workload" | grep -q 'podTemplateHashValue: Latest'; then
+    ok "dev: the Rollout has a canary Service and passes the canary's pod-template-hash to the gate"
+  else
+    fail "dev: the Rollout lacks canaryService demo-canary or the canary-hash argument"
   fi
 
   section "Canary dashboard"

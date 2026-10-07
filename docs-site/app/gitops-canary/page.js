@@ -2,9 +2,9 @@ export const metadata = {
   title: 'GitOps & Canary — Stackup',
 };
 
-const QUERY = `sum(rate(http_requests_total{service="demo", code=~"2.."}[2m]))
+const QUERY = `sum(rate(http_requests_total{service="demo-canary", rollouts_pod_template_hash="<hash>", code=~"2.."}[2m]))
 /
-sum(rate(http_requests_total{service="demo"}[2m]))`;
+sum(rate(http_requests_total{service="demo-canary", rollouts_pod_template_hash="<hash>"}[2m]))`;
 
 export default function GitopsCanary() {
   return (
@@ -52,17 +52,27 @@ export default function GitopsCanary() {
       <h2>The analysis query</h2>
       <p>
         The <code>AnalysisTemplate</code> in <code>helm/demo</code> computes the
-        share of requests that returned a 2xx status over the last two minutes:
+        share of the new pods&apos; requests that returned a 2xx status over the
+        last two minutes. Argo Rollouts fills in <code>&lt;hash&gt;</code>, the
+        pod-template-hash of the new ReplicaSet:
       </p>
       <pre>
         <code>{QUERY}</code>
       </pre>
       <p>
+        Prometheus adds both labels when it scrapes. <code>service</code> is the
+        Kubernetes Service a sample came through: <code>demo-canary</code> is the
+        Rollout&apos;s canary Service, which Argo Rollouts points at the new
+        pods. <code>rollouts_pod_template_hash</code> is copied from each pod, and it
+        leaves out samples the canary Service collected from the stable pods
+        before that switch.
+      </p>
+      <p>
         A measurement passes when the result is at least 0.95. The template
         allows one failed measurement (<code>failureLimit: 1</code>); a second
-        one fails the AnalysisRun. The query covers every pod behind the
-        Service, old and new, so the new version&apos;s errors are averaged in
-        with the old version&apos;s traffic.
+        one fails the AnalysisRun. Because the query covers only the new pods,
+        a version that fails more than about 5% of its real requests fails the
+        gate.
       </p>
 
       <h2>Seeing it abort</h2>

@@ -1,7 +1,7 @@
 # kube-prometheus-stack: the upstream chart (pinned) with this repository's
 # values file, infra/kube-prometheus-stack/values.yaml.
 #
-# The release name `kps` matters: the demo's ServiceMonitor carries
+# The release name `kps` matters: the demo's ServiceMonitors carry
 # `release: kps`, and the Grafana Service is kps-grafana (make port-forward).
 # Server-side apply because the Prometheus operator's CRDs are larger than
 # the annotation a client-side apply writes.

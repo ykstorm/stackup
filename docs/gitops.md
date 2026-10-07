@@ -58,11 +58,13 @@ There is no traffic router, so Argo Rollouts reaches each weight by pod count. W
 | 75% | 2 | 1 |
 | 100% | 2 | 0 |
 
-The Service spreads requests across all ready pods, so the new version's share of traffic follows its share of pods.
+The `demo` Service spreads requests across all ready pods, so the new version's share of traffic follows its share of pods.
+
+The Rollout also names two Services that carry no traffic, `demo-canary` (`canaryService`) and `demo-stable` (`stableService`). Argo Rollouts adds the `rollouts-pod-template-hash` of one ReplicaSet to their selectors: during an update `demo-canary` selects only the new pods and `demo-stable` only the old ones, and between updates both select the stable pods. The demo Application tells ArgoCD to leave that selector key alone (`ignoreDifferences` with `RespectIgnoreDifferences=true`), since git never has it.
 
 ### The analysis gate
 
-The `analysis` step runs the `demo-success-rate` AnalysisTemplate. The Rollout passes it one argument, `service-name`, set from `serviceName` in the values (`demo`). With the default values the metric is:
+The `analysis` step runs the `demo-success-rate` AnalysisTemplate. The Rollout passes it two arguments: `canary-service`, the name of the canary Service (`demo-canary`), and `canary-hash`, the pod-template-hash of the new ReplicaSet (`podTemplateHashValue: Latest`). With the default values the metric is:
 
 | Field | Value |
 |---|---|
@@ -73,13 +75,20 @@ The `analysis` step runs the `demo-success-rate` AnalysisTemplate. The Rollout p
 | `successCondition` | `result[0] >= 0.95` |
 | `failureLimit` | 1 |
 
-The query:
+The query, with `<hash>` standing for the value of `canary-hash`:
 
 ```promql
-sum(rate(http_requests_total{service="demo", code=~"2.."}[2m]))
+sum(rate(http_requests_total{service="demo-canary", rollouts_pod_template_hash="<hash>", code=~"2.."}[2m]))
 /
-sum(rate(http_requests_total{service="demo"}[2m]))
+sum(rate(http_requests_total{service="demo-canary", rollouts_pod_template_hash="<hash>"}[2m]))
 ```
+
+Neither `service` nor `rollouts_pod_template_hash` is written by the app; Prometheus adds both when it scrapes:
+
+- The chart has two ServiceMonitors: `demo` scrapes every pod through the `demo` Service, and `demo-canary` scrapes the pods behind the canary Service. The kube-prometheus-stack operator labels each sample with `service`, the name of the Service it was scraped through. The app's own `service` label (`serviceName` in the values) clashes with that label, so Prometheus keeps it as `exported_service`, and the query does not use it.
+- The `demo-canary` ServiceMonitor sets `podTargetLabels: [rollouts-pod-template-hash]`, which copies that pod label onto its samples as `rollouts_pod_template_hash`.
+
+The Service name alone would not be enough. Between updates the canary Service selects the stable pods, so for the length of the `[2m]` window after Argo Rollouts switches it, its samples still include the stable pods' traffic. The hash leaves only the new ReplicaSet's samples.
 
 Argo Rollouts fails the metric when the number of failed measurements is greater than `failureLimit`, and marks it successful once `count` measurements are taken without that happening. With three measurements and a limit of one, a single bad reading is tolerated and a second one fails the AnalysisRun. `failureLimit` has to stay below `count`; at or above it, the gate can never fail.
 
@@ -87,10 +96,9 @@ When the AnalysisRun fails, Argo Rollouts aborts the update. It scales the new R
 
 Some details that matter when reading the result:
 
-- The query covers every pod behind the Service, old and new. A new version that fails half of its requests while serving a third of the traffic brings the ratio to about 0.83.
-- Every request counts, including kubelet probes and Prometheus scrapes, which always return 200. With no other traffic the ratio is 1.0, so the gate only has something to judge when real requests reach the pods. `ci/traffic.yaml` provides them (see the README's roll-back walk-through).
-- The `[2m]` window means the first measurement still includes traffic from before the canary started.
-- With kube-prometheus-stack, each scraped sample gets a `service` label set to the Kubernetes Service name, and the app's own `service` label is kept as `exported_service`. The release is named `demo`, so both are `demo` and the query matches.
+- The query covers the new pods only, so their error rate is not averaged with the old pods' traffic. A new version that fails more than about 5% of its real requests fails the measurement.
+- Every request counts, including kubelet probes and Prometheus scrapes, which always return 200. With no other traffic the ratio is 1.0, so the gate only has something to judge when real requests reach the pods. `ci/traffic.yaml` provides them (see the README's roll-back walk-through). With that traffic the probes and scrapes are a small share, so the threshold sits a little above 5%.
+- `rate()` needs two samples of a series. The canary ServiceMonitor scrapes every 30 seconds, so the first measurement, a minute after the canary Service switches, can find only one and return nothing. Argo Rollouts records that as an Error, not a failure, and takes another measurement; an Error does not count towards `count`.
 
 ### In CI
 

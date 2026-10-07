@@ -1,15 +1,25 @@
 {{- if .Values.rollout.enabled }}
 # AnalysisTemplate for the demo canary. The Rollout's `analysis` step
 # (after the 25% weight) runs this against the operated Prometheus. The
-# query is a REAL HTTP success-rate ratio computed from the workload's
-# http_requests_total counter: the fraction of requests that returned a
-# 2xx status over a 2-minute window. If successCondition fails more than
+# query is the HTTP success rate of the canary pods alone, computed from the
+# workload's http_requests_total counter: the share of their requests that
+# returned a 2xx status over the window. If successCondition fails more than
 # failureLimit times, the Rollout aborts and rolls back to the previous
 # revision.
 #
-# The `service-name` arg is passed by the Rollout (spec.strategy.canary
-# steps[].analysis.args) and MUST match the `service` label the demo app
-# stamps on every sample (SERVICE_NAME env / .Values.serviceName).
+# Both arguments come from the Rollout (steps[].analysis.args), and both
+# match labels that Prometheus adds when it scrapes, not labels the app
+# writes:
+#   - `service` is the Kubernetes Service a sample was scraped through. The
+#     kube-prometheus-stack operator sets it from the ServiceMonitor's
+#     Service, and ci/prometheus.yaml does the same in CI. The app's own
+#     `service` label (SERVICE_NAME) clashes with it and is kept as
+#     `exported_service`, which the query does not use.
+#   - `rollouts_pod_template_hash` is the pod's rollouts-pod-template-hash
+#     label, copied onto the samples by the canary ServiceMonitor
+#     (podTargetLabels) and by ci/prometheus.yaml. canary-hash is the new
+#     ReplicaSet's hash, so samples the canary Service collected from the
+#     stable pods before Argo Rollouts switched it are left out.
 apiVersion: argoproj.io/v1alpha1
 kind: AnalysisTemplate
 metadata:
@@ -18,7 +28,8 @@ metadata:
     {{- include "demo.labels" . | nindent 4 }}
 spec:
   args:
-    - name: service-name
+    - name: canary-service
+    - name: canary-hash
   metrics:
     - name: success-rate
       initialDelay: {{ .Values.rollout.analysis.initialDelay }}
@@ -34,14 +45,16 @@ spec:
           query: |
             sum(rate(
               http_requests_total{
-                service="{{`{{args.service-name}}`}}",
+                service="{{`{{args.canary-service}}`}}",
+                rollouts_pod_template_hash="{{`{{args.canary-hash}}`}}",
                 code=~"2.."
               }[{{ .Values.rollout.analysis.window }}]
             ))
             /
             sum(rate(
               http_requests_total{
-                service="{{`{{args.service-name}}`}}"
+                service="{{`{{args.canary-service}}`}}",
+                rollouts_pod_template_hash="{{`{{args.canary-hash}}`}}"
               }[{{ .Values.rollout.analysis.window }}]
             ))
 {{- end }}

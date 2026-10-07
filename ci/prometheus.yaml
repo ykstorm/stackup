@@ -6,6 +6,12 @@
 # `prometheus-operated.monitoring.svc:9090` — so the Rollout's real success-rate
 # query runs against real scraped data with no template change. Kept tiny so the
 # e2e fits a runner: 5s scrape, no alerting, no persistence.
+#
+# It labels the samples the way the kube-prometheus-stack operator does for
+# the chart's two ServiceMonitors, because the gate's query depends on it:
+# `service` is the Kubernetes Service a pod was scraped through (the app's own
+# `service` label clashes and is kept as `exported_service`), and
+# `rollouts_pod_template_hash` is the pod's rollouts-pod-template-hash label.
 ---
 apiVersion: v1
 kind: Namespace
@@ -53,7 +59,9 @@ data:
     scrape_configs:
       # Scrape the demo pods per-pod (via endpoints), so rate() sees a stable
       # per-target counter. Scraping the Service VIP would round-robin pods and
-      # corrupt the counter — endpoints SD avoids that.
+      # corrupt the counter; endpoints SD avoids that. Two Services: `demo`
+      # in front of every pod, and `demo-canary`, which Argo Rollouts points
+      # at the canary pods during an update.
       - job_name: demo
         kubernetes_sd_configs:
           - role: endpoints
@@ -62,10 +70,14 @@ data:
         relabel_configs:
           - source_labels: [__meta_kubernetes_service_name]
             action: keep
-            regex: demo
+            regex: demo|demo-canary
           - source_labels: [__meta_kubernetes_endpoint_port_name]
             action: keep
             regex: http
+          - source_labels: [__meta_kubernetes_service_name]
+            target_label: service
+          - source_labels: [__meta_kubernetes_pod_label_rollouts_pod_template_hash]
+            target_label: rollouts_pod_template_hash
 ---
 apiVersion: apps/v1
 kind: Deployment
