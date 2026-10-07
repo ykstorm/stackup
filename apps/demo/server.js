@@ -82,9 +82,14 @@ app.get("/metrics", async (_req, res) => {
 
 // Only listen when run directly; exporting the app keeps it testable.
 if (require.main === module) {
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     // eslint-disable-next-line no-console
     console.log(`${SERVICE_NAME} listening on :${PORT} (failureRate=${FAILURE_RATE})`);
+  });
+  // Kubernetes sends SIGTERM when a pod is replaced. Without this handler the
+  // process ignores it and the pod waits out the 30 s grace period.
+  process.on('SIGTERM', () => {
+    server.close(() => process.exit(0));
   });
 }
 
