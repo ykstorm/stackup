@@ -6,7 +6,7 @@ ArgoCD reconciles this cluster from git, and the `demo` workload ships through a
 
 ArgoCD runs in the `argocd` namespace. It is installed from `infra/argocd`, a wrapper chart that pins the upstream `argo/argo-cd` chart. The entry point is one root Application, `argocd/root-app.yaml`, which `make up` applies.
 
-`root` renders `argocd/apps/`, a small Helm chart in this repository. Each of its templates is an Application, one per component, so reconciling `root` brings in the whole tree. The repository URL and revision are values of that chart: the root passes them down, and `scripts/bootstrap.sh` sets both from `STACKUP_REPO` and `STACKUP_REVISION` when they are given, so the tree can follow a fork, a branch or a single commit. The six children:
+`root` renders `argocd/apps/`, a small Helm chart in this repository. Each of its templates is an Application, one per component, so reconciling `root` brings in the whole tree. The repository URL and revision are values of that chart: the root passes them down, and `scripts/bootstrap.sh` sets both from `STACKUP_REPO` and `STACKUP_REVISION` when they are given, so the tree can follow a fork, a branch or a single commit. The five children:
 
 | Application | Wave | Source | Namespace |
 |---|---|---|---|
@@ -14,16 +14,15 @@ ArgoCD runs in the `argocd` namespace. It is installed from `infra/argocd`, a wr
 | `ingress-nginx` | 0 | `ingress-nginx/ingress-nginx` 4.15.1 with `infra/ingress-nginx/values.yaml` | `ingress-nginx` |
 | `kube-prometheus-stack` | 1 | `prometheus-community/kube-prometheus-stack` 84.5.0 with `infra/kube-prometheus-stack/values.yaml`, release `kps` | `monitoring` |
 | `argo-rollouts` | 1 | `infra/argo-rollouts`, a wrapper chart pinning `argo/argo-rollouts` 2.41.0 | `argo-rollouts` |
-| `sealed-secrets` | 1 | `infra/sealed-secrets/controller.yaml`, the v0.27.1 release manifest | `kube-system` |
 | `demo` | 2 | `helm/demo` with `values.dev.yaml` | `app` |
 
 The root and every child run `syncPolicy.automated` with `prune: true` and `selfHeal: true`. A resource deleted from git is pruned from the cluster, and an edit made outside git is reverted on the next sync. Every child also sets:
 
 - `ServerSideApply=true`. Several of these charts ship CRDs larger than the 256 KB annotation a client-side apply writes (`metadata.annotations: Too long`).
-- `CreateNamespace=true`, except `sealed-secrets`, which installs into `kube-system`.
+- `CreateNamespace=true`.
 - A retry policy with backoff, for a sync that fails once because a webhook it needs is still starting.
 
-`cert-manager`, `ingress-nginx` and `kube-prometheus-stack` are multi-source Applications: one source is the pinned upstream chart, the other is this repository, referenced as `$values` for a values file or as a path for the ClusterIssuer. They also ignore the `caBundle` of their admission webhooks, which is filled in after install and never in git. The two wrapper charts (`infra/argo-rollouts`, `infra/argocd`) pin their upstream chart as a dependency in `Chart.yaml`, so one path in this repository renders them. Sealed Secrets uses the release manifest kept in the repository because the project's Helm repository index returns 404.
+`cert-manager`, `ingress-nginx` and `kube-prometheus-stack` are multi-source Applications: one source is the pinned upstream chart, the other is this repository, referenced as `$values` for a values file or as a path for the ClusterIssuer. They also ignore the `caBundle` of their admission webhooks, which is filled in after install and never in git. The two wrapper charts (`infra/argo-rollouts`, `infra/argocd`) pin their upstream chart as a dependency in `Chart.yaml`, so one path in this repository renders them.
 
 ArgoCD does not manage itself here. The bootstrap script installs it.
 
@@ -31,7 +30,7 @@ ArgoCD does not manage itself here. The bootstrap script installs it.
 
 Each component has one owner. `scripts/bootstrap.sh` (run by `make up`) installs only what has to exist before ArgoCD can work: the kind cluster, Calico, the `app` namespace with its Pod Security labels, and ArgoCD itself. ArgoCD's CRDs come first, applied server-side from the ArgoCD release that matches the chart; the ApplicationSet CRD alone is over 1 MB. The script then builds the demo image and loads it into the node, applies `argocd/root-app.yaml`, and waits until every Application is Synced and Healthy.
 
-Everything else belongs to ArgoCD, in sync waves. Wave 0 is cert-manager and ingress-nginx, whose webhooks the later Ingresses and certificates need. Wave 1 is kube-prometheus-stack, Argo Rollouts and Sealed Secrets. Wave 2 is the demo, which needs the Rollout and ServiceMonitor CRDs from wave 1. Waves of Applications only wait for each other when ArgoCD can tell a child's health, which it stopped doing by default in ArgoCD 1.8; `infra/argocd/values.yaml` adds the health check back. Inside the cert-manager Application, the ClusterIssuer carries its own wave so that it is created after the cert-manager webhook is serving.
+Everything else belongs to ArgoCD, in sync waves. Wave 0 is cert-manager and ingress-nginx, whose webhooks the later Ingresses and certificates need. Wave 1 is kube-prometheus-stack and Argo Rollouts. Wave 2 is the demo, which needs the Rollout and ServiceMonitor CRDs from wave 1. Waves of Applications only wait for each other when ArgoCD can tell a child's health, which it stopped doing by default in ArgoCD 1.8; `infra/argocd/values.yaml` adds the health check back. Inside the cert-manager Application, the ClusterIssuer carries its own wave so that it is created after the cert-manager webhook is serving.
 
 ## The canary
 

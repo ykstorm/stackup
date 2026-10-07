@@ -29,7 +29,7 @@ export default function Architecture() {
         <code>make up</code> installs only kind, Calico, the <code>app</code>{' '}
         namespace and ArgoCD, loads the demo image onto the node, and applies
         one root ArgoCD Application. The root renders{' '}
-        <code>argocd/apps/</code>, a small Helm chart that defines six child
+        <code>argocd/apps/</code>, a small Helm chart that defines five child
         applications, and ArgoCD installs them in three sync waves:
       </p>
       <ul>
@@ -37,7 +37,6 @@ export default function Architecture() {
         <li>wave 0, ingress-nginx: the ingress controller</li>
         <li>wave 1, kube-prometheus-stack: Prometheus and Grafana</li>
         <li>wave 1, argo-rollouts: the canary controller</li>
-        <li>wave 1, sealed-secrets: decrypts SealedSecret resources</li>
         <li>wave 2, demo: the canary subject, from the chart in helm/demo</li>
       </ul>
       <p>
@@ -114,7 +113,10 @@ export default function Architecture() {
           </tr>
           <tr>
             <td>Secrets</td>
-            <td>Sealed Secrets controller with a per-cluster key</td>
+            <td>
+              None in git. <code>make up</code> generates Grafana&apos;s admin
+              password and keeps it in a Secret
+            </td>
           </tr>
           <tr>
             <td>TLS</td>
@@ -128,9 +130,9 @@ export default function Architecture() {
         On a managed cluster the main changes are a multi-node control plane, a
         LoadBalancer Service for ingress-nginx instead of hostPort, an ACME
         issuer instead of the self-signed one, persistent volumes for
-        Prometheus and Grafana, a backup of the Sealed Secrets key, and a
-        traffic router so canary weights are exact shares of traffic rather
-        than pod counts.
+        Prometheus and Grafana, a secret store whose keys outlive the cluster,
+        and a traffic router so canary weights are exact shares of traffic
+        rather than pod counts.
       </p>
     </>
   );

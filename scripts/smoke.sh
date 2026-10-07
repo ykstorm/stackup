@@ -20,7 +20,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 . scripts/lib.sh
 
 NAMESPACES=(kube-system tigera-operator calico-system argocd argo-rollouts cert-manager ingress-nginx monitoring app)
-APPS=(root cert-manager ingress-nginx kube-prometheus-stack argo-rollouts sealed-secrets demo)
+APPS=(root cert-manager ingress-nginx kube-prometheus-stack argo-rollouts demo)
 
 failures=0
 ok()   { printf 'ok   %s\n' "$*"; }

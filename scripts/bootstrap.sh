@@ -39,7 +39,7 @@ DEFAULT_REPO=https://github.com/ykstorm/stackup
 REPO_URL="${STACKUP_REPO:-$DEFAULT_REPO}"
 REVISION="${STACKUP_REVISION:-main}"
 APPS_TIMEOUT="${STACKUP_APPS_TIMEOUT:-1200}"
-APPS=(root cert-manager ingress-nginx kube-prometheus-stack argo-rollouts sealed-secrets demo)
+APPS=(root cert-manager ingress-nginx kube-prometheus-stack argo-rollouts demo)
 
 # --------------------------------------------------------------------- #
 step "1. kind cluster '$CLUSTER_NAME' from $KIND_CONFIG"
@@ -153,7 +153,7 @@ kubectl apply -f - <<<"$root" >/dev/null
 # --------------------------------------------------------------------- #
 step "7. waiting for ArgoCD to sync the Applications (up to $((APPS_TIMEOUT / 60)) minutes)"
 # --------------------------------------------------------------------- #
-info "wave 0: cert-manager, ingress-nginx; wave 1: kube-prometheus-stack, argo-rollouts, sealed-secrets; wave 2: demo"
+info "wave 0: cert-manager, ingress-nginx; wave 1: kube-prometheus-stack, argo-rollouts; wave 2: demo"
 info "the first run pulls every image, so this is the slow part"
 
 deadline=$(( $(date +%s) + APPS_TIMEOUT ))

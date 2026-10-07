@@ -7,12 +7,11 @@ const GATE_QUERY =
 const COMPONENTS = [
   ['Cluster', 'kind', 'One Kubernetes node running as a Docker container'],
   ['Network', 'Calico', 'Pod networking and NetworkPolicy enforcement in both directions'],
-  ['GitOps', 'ArgoCD', 'A root Application syncs six child Applications from this repository'],
+  ['GitOps', 'ArgoCD', 'A root Application syncs five child Applications from this repository'],
   ['Delivery', 'Argo Rollouts', "Runs the demo's canary steps and its analysis gate"],
   ['Metrics', 'kube-prometheus-stack', 'Prometheus and Grafana'],
   ['Ingress', 'ingress-nginx', "Serves *.localtest.me on ports 80 and 443 of the host's loopback address"],
   ['TLS', 'cert-manager', 'Certificates from a self-signed ClusterIssuer'],
-  ['Secrets', 'Sealed Secrets', 'Decrypts SealedSecret resources inside the cluster'],
   ['Pod security', 'Pod Security Admission', 'The app namespace enforces the restricted profile'],
   ['Workload', 'demo (helm/demo)', 'Express service that counts every request in http_requests_total'],
 ];
@@ -86,7 +85,7 @@ make up        # or ./setup.sh`}</code>
             <a href="https://argocd.localtest.me">argocd.localtest.me</a>
           </p>
           <p>
-            The root Application and its six children, with the sync and health of each. Log in as{' '}
+            The root Application and its five children, with the sync and health of each. Log in as{' '}
             <code>admin</code>; the password is in the <code>argocd-initial-admin-secret</code> Secret.
           </p>
         </section>

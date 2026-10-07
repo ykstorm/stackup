@@ -1,6 +1,6 @@
 # Live verification — stackup
 
-This page records one run, on 2026-06-24, of the bootstrap as it was then: it installed the platform charts with `helm` and handed them to ArgoCD afterwards. The bootstrap has changed since. It now installs only kind, Calico and ArgoCD, applies the CRDs server-side, and lets ArgoCD install every other component in sync waves. No run of the current version is recorded on this page.
+This page records one run, on 2026-06-24, of the bootstrap as it was then: it installed the platform charts with `helm` and handed them to ArgoCD afterwards. The bootstrap has changed since. It now installs only kind, Calico and ArgoCD, applies the CRDs server-side, and lets ArgoCD install every other component in sync waves. The Sealed Secrets controller listed below has since been removed from the stack. No run of the current version is recorded on this page.
 
 **Date:** 2026-06-24
 **Host:** Windows 11 + Docker Desktop (kind v1.35.0 node, 12 vCPU, ~3.7 GB RAM allocated to the Linux engine)

@@ -282,17 +282,17 @@ else
     kc "kubeconform argocd/apps (rendered)" <<<"$apps_render"
     kc "kubeconform argocd/root-app.yaml" argocd/root-app.yaml
   fi
-  expect_count "argocd/apps" "$apps_render" Application 6
-  for app in argo-rollouts cert-manager demo ingress-nginx kube-prometheus-stack sealed-secrets; do
+  expect_count "argocd/apps" "$apps_render" Application 5
+  for app in argo-rollouts cert-manager demo ingress-nginx kube-prometheus-stack; do
     if ! printf '%s\n' "$apps_render" | grep -q "^  name: $app\$"; then
       fail "argocd/apps: no Application named $app"
     fi
   done
   ssa="$(printf '%s\n' "$apps_render" | grep -c 'ServerSideApply=true' || true)"
-  if [ "$ssa" = 6 ]; then
+  if [ "$ssa" = 5 ]; then
     ok "argocd/apps: every child uses server-side apply (CRDs over 256 KB)"
   else
-    fail "argocd/apps: $ssa of 6 children set ServerSideApply=true"
+    fail "argocd/apps: $ssa of 5 children set ServerSideApply=true"
   fi
   # Pointing the tree at a fork and a revision must change every reference
   # to this repository (bootstrap.sh does this for STACKUP_REPO/REVISION).
@@ -300,10 +300,10 @@ else
   fork_refs="$(printf '%s\n' "$fork_render" | grep -c 'targetRevision: feature' || true)"
   if printf '%s\n' "$fork_render" | grep -q 'ykstorm/stackup'; then
     fail "argocd/apps: a child still names ykstorm/stackup when repoURL is overridden"
-  elif [ "$fork_refs" = 6 ]; then
-    ok "argocd/apps: repoURL and targetRevision reach all 6 sources from this repository"
+  elif [ "$fork_refs" = 5 ]; then
+    ok "argocd/apps: repoURL and targetRevision reach all 5 sources from this repository"
   else
-    fail "argocd/apps: targetRevision override reached $fork_refs of 6 sources"
+    fail "argocd/apps: targetRevision override reached $fork_refs of 5 sources"
   fi
   root_repos="$(awk '$1 == "repoURL:" { print $2 }' argocd/root-app.yaml | sort -u)"
   root_revs="$(awk '$1 == "targetRevision:" { print $2 }' argocd/root-app.yaml | sort -u)"
@@ -383,10 +383,8 @@ else
 fi
 
 if [ "$have_kubeconform" = 1 ]; then
-  # -skip: the Sealed Secrets release manifest carries its CRD, which has no
-  # schema of its own to check against.
-  kc "kubeconform raw manifests" -skip CustomResourceDefinition manifests/app/00-namespace.yaml \
-    infra/cert-manager/clusterissuer-selfsigned.yaml infra/sealed-secrets/controller.yaml \
+  kc "kubeconform raw manifests" manifests/app/00-namespace.yaml \
+    infra/cert-manager/clusterissuer-selfsigned.yaml \
     kind/calico/installation.yaml ci/prometheus.yaml ci/traffic.yaml
 else
   missing kubeconform "schema validation of the raw manifests"
