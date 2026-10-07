@@ -9,8 +9,8 @@ Two commands narrow most problems down:
 
 `make up` needs bash, Docker and the Linux command-line tools, so on Windows it runs in one of two places:
 
-- **WSL 2 (recommended).** Use Ubuntu, with Docker Desktop's WSL integration turned on for the distribution (Docker Desktop, Settings, Resources, WSL integration) or Docker Engine installed inside WSL. Clone the repository into the Linux file system, for example `~/stackup`, not under `/mnt/c`, then run `make up`.
-- **Git Bash, with Docker Desktop.** Run `./setup.sh`. Git for Windows does not include `make`; `./setup.sh` does the same as `make up`, and the other targets are one script each in `scripts/`.
+- WSL 2 (recommended). Use Ubuntu, with Docker Desktop's WSL integration turned on for the distribution (Docker Desktop, Settings, Resources, WSL integration) or Docker Engine installed inside WSL. Clone the repository into the Linux file system, for example `~/stackup`, not under `/mnt/c`, then run `make up`.
+- Git Bash, with Docker Desktop. Run `./setup.sh`. Git for Windows does not include `make`; `./setup.sh` does the same as `make up`, and the other targets are one script each in `scripts/`.
 
 PowerShell and cmd cannot run the scripts. `make` started from either stops with a message saying so.
 
@@ -103,10 +103,10 @@ Grafana answers `origin not allowed` (HTTP 403) when the host name in the browse
 
 `make up` waits until every Application is Synced and Healthy and prints their states while it waits. The usual causes of a stuck one, and what the repository does about them:
 
-- **The chart cannot be fetched.** An Application whose source returns an error shows `Unknown`. Every upstream chart is pinned to a version, in its Application or in a wrapper chart's `Chart.yaml`, so check that the chart repository answers and still lists that version.
-- **The namespace does not exist.** Every Application that installs into its own namespace sets `CreateNamespace=true`.
-- **A CRD is not there yet.** The children carry sync waves: cert-manager and ingress-nginx first, then kube-prometheus-stack and argo-rollouts, then the demo. `infra/argocd/values.yaml` adds the health check that makes the root wait for each wave to be Healthy. Every child also retries a failed sync with backoff.
-- **Two installers own the same objects.** `make up` installs only kind, Calico and ArgoCD itself; everything else belongs to ArgoCD. A cluster created by an older `make up`, which installed the charts with `helm` and then handed them to ArgoCD, can keep conflicts. Recreate it: `make down && make up`.
+- The chart cannot be fetched. An Application whose source returns an error shows `Unknown`. Every upstream chart is pinned to a version, in its Application or in a wrapper chart's `Chart.yaml`, so check that the chart repository answers and still lists that version.
+- The namespace does not exist. Every Application that installs into its own namespace sets `CreateNamespace=true`.
+- A CRD is not there yet. The children carry sync waves: cert-manager and ingress-nginx first, then kube-prometheus-stack and argo-rollouts, then the demo. `infra/argocd/values.yaml` adds the health check that makes the root wait for each wave to be Healthy. Every child also retries a failed sync with backoff.
+- Two installers own the same objects. `make up` installs only kind, Calico and ArgoCD itself; everything else belongs to ArgoCD. A cluster created by an older `make up`, which installed the charts with `helm` and then handed them to ArgoCD, can keep conflicts. Recreate it: `make down && make up`.
 
 To see why one is stuck:
 
