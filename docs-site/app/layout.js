@@ -7,30 +7,19 @@ export const metadata = {
     'One-command Kubernetes on a laptop: kind, an ArgoCD app-of-apps, and an Argo Rollouts canary gated on a Prometheus success rate.',
 };
 
-function Header() {
-  return (
-    <header className="site-header">
-      <div className="inner">
-        <Link className="brand" href="/">
-          Stackup
-        </Link>
-        <nav className="nav">
-          <Link href="/">Overview</Link>
-          <Link href="/getting-started/">Getting Started</Link>
-          <Link href="/architecture/">Architecture</Link>
-          <Link href="/gitops-canary/">GitOps &amp; Canary</Link>
-          <a href="https://github.com/ykstorm/stackup">GitHub</a>
-        </nav>
-      </div>
-    </header>
-  );
-}
-
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body>
-        <Header />
+        <header>
+          <nav aria-label="Pages">
+            <Link href="/">Overview</Link>
+            <Link href="/getting-started/">Getting Started</Link>
+            <Link href="/architecture/">Architecture</Link>
+            <Link href="/gitops-canary/">GitOps &amp; Canary</Link>
+            <a href="https://github.com/ykstorm/stackup">GitHub</a>
+          </nav>
+        </header>
         <main>{children}</main>
         <footer>
           Stackup is licensed under the Apache License 2.0.{' '}
