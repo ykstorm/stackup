@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Checks what `make up` needs before anything is created: docker (running,
 # with enough memory), kind, kubectl, helm, the kubectl-argo-rollouts plugin,
-# git, and free ports 80 and 443. For anything missing it prints the install
-# command for this platform, and it exits non-zero if a requirement is not
-# met. ./setup.sh (make up) runs it first; make preflight runs only this.
+# git, openssl, and free ports 80 and 443. For anything missing it prints
+# the install command for this platform, and it exits non-zero if a
+# requirement is not met. ./setup.sh (make up) runs it first; make preflight
+# runs only this.
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
@@ -64,6 +65,9 @@ install_hint() {
                           "sudo install -m 0755 /tmp/kubectl-argo-rollouts /usr/local/bin/kubectl-argo-rollouts" ;;
     git:macos)       hint "xcode-select --install   (or: brew install git)" ;;
     git:*)           hint "sudo apt-get install -y git   (or your distribution's package manager)" ;;
+    openssl:macos)   hint "brew install openssl" ;;
+    openssl:gitbash) hint "Git for Windows ships openssl; reinstall it from https://git-scm.com/download/win" ;;
+    openssl:*)       hint "sudo apt-get install -y openssl   (or your distribution's package manager)" ;;
     docker:wsl)      hint "Install Docker Desktop for Windows and turn on Settings > Resources > WSL integration for this distribution," \
                           "or install Docker Engine inside WSL: https://docs.docker.com/engine/install/ubuntu/" ;;
     docker:gitbash)  hint "Install Docker Desktop for Windows: https://docs.docker.com/desktop/setup/install/windows-install/" ;;
@@ -164,6 +168,14 @@ if have git; then
 else
   fail "git not found"
   install_hint git
+fi
+
+# The bootstrap generates Grafana's admin password with openssl rand.
+if have openssl; then
+  ok "openssl: $(openssl version | awk '{ print $1, $2 }')"
+else
+  fail "openssl not found (make up generates Grafana's admin password with it)"
+  install_hint openssl
 fi
 
 if ! have curl; then

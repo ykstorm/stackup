@@ -26,8 +26,8 @@ export default function GettingStarted() {
           <code>make rollout-status</code> and <code>make rollout-ui</code>.
         </li>
         <li>
-          <code>git</code> and <code>bash</code>, plus <code>make</code> for the
-          make targets.
+          <code>git</code>, <code>bash</code> and <code>openssl</code>, plus{' '}
+          <code>make</code> for the make targets.
         </li>
         <li>Ports 80 and 443 free on the host.</li>
         <li>
@@ -87,8 +87,11 @@ make up        # or ./setup.sh`}</code>
       <ul>
         <li>
           <strong>https://grafana.localtest.me</strong>: log in as{' '}
-          <code>admin</code> / <code>prom-operator</code>, the chart default.
-          The canary dashboard is at{' '}
+          <code>admin</code>. <code>make up</code> generates the password with{' '}
+          <code>openssl rand</code> and keeps it in the{' '}
+          <code>grafana-admin</code> Secret in the <code>monitoring</code>{' '}
+          namespace; it prints the command that reads it. The canary dashboard
+          is at{' '}
           <strong>https://grafana.localtest.me/d/stackup-canary</strong>.
         </li>
         <li>

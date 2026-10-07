@@ -3,7 +3,8 @@
 #
 #   1. the kind cluster from kind/cluster.yaml (kind's own CNI turned off)
 #   2. Calico, applied server-side, then the node Ready
-#   3. the `app` namespace with the restricted Pod Security profile
+#   3. the `app` namespace with the restricted Pod Security profile, and
+#      Grafana's admin Secret in `monitoring` with a random password
 #   4. ArgoCD: its CRDs from the matching release (server-side), then the
 #      infra/argocd chart
 #   5. the demo image, built from apps/demo and loaded into the node
@@ -31,6 +32,9 @@ CALICO_VERSION=v3.28.2
 # Keep equal to appVersion in infra/argocd/Chart.yaml (lint.sh checks).
 ARGOCD_VERSION=v3.4.3
 NAMESPACE=app
+# Read by the Grafana chart through grafana.admin.existingSecret in
+# infra/kube-prometheus-stack/values.yaml.
+GRAFANA_SECRET=grafana-admin
 DEFAULT_REPO=https://github.com/ykstorm/stackup
 REPO_URL="${STACKUP_REPO:-$DEFAULT_REPO}"
 REVISION="${STACKUP_REVISION:-main}"
@@ -71,9 +75,35 @@ info "waiting for the node to become Ready (it does once Calico runs)"
 kubectl wait --for=condition=Ready node --all --timeout=300s
 
 # --------------------------------------------------------------------- #
-step "3. namespace '$NAMESPACE' (restricted Pod Security profile)"
+step "3. namespace '$NAMESPACE' (restricted Pod Security profile), Grafana admin Secret"
 # --------------------------------------------------------------------- #
 kubectl apply -f manifests/app/00-namespace.yaml >/dev/null
+
+# Grafana's admin password is generated here, once per cluster, so none is
+# kept in git. The Secret has to exist before ArgoCD syncs
+# kube-prometheus-stack in step 7, or the Grafana pod cannot start. A re-run
+# keeps the password it finds. `kubectl create` rather than `apply`, because
+# apply would copy the password into its last-applied annotation.
+kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+if kubectl get secret "$GRAFANA_SECRET" -n monitoring >/dev/null 2>&1; then
+  info "Grafana admin Secret $GRAFANA_SECRET exists; keeping its password"
+else
+  grafana_password="$(openssl rand -hex 16)"
+  [ -n "$grafana_password" ] || die "openssl rand produced no password for Grafana"
+  kubectl create -f - >/dev/null <<EOF_SECRET
+apiVersion: v1
+kind: Secret
+metadata:
+  name: $GRAFANA_SECRET
+  namespace: monitoring
+type: Opaque
+stringData:
+  admin-user: admin
+  admin-password: "$grafana_password"
+EOF_SECRET
+  unset grafana_password
+  info "created the Grafana admin Secret $GRAFANA_SECRET with a random password"
+fi
 
 # --------------------------------------------------------------------- #
 step "4. ArgoCD $ARGOCD_VERSION"
@@ -172,7 +202,8 @@ cat <<'EOF'
 Open these (localtest.me resolves to 127.0.0.1; the certificates are self-signed):
   ArgoCD            https://argocd.localtest.me   user admin, password from:
                     kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
-  Grafana           https://grafana.localtest.me  admin / prom-operator
+  Grafana           https://grafana.localtest.me  user admin, password from:
+                    kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d
   Canary dashboard  https://grafana.localtest.me/d/stackup-canary
   Demo              https://demo.localtest.me
 

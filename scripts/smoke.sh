@@ -109,7 +109,8 @@ if get http://127.0.0.1:13000/api/health | grep -q '"database": *"ok"'; then
 else
   fail "Grafana does not answer on svc/kps-grafana port 80"
 fi
-grafana_password="$(k get secret kps-grafana -n monitoring -o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d 2>/dev/null)"
+# The admin password make up generated (scripts/bootstrap.sh, step 3).
+grafana_password="$(k get secret grafana-admin -n monitoring -o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d 2>/dev/null)"
 if get -u "admin:${grafana_password}" http://127.0.0.1:13000/api/dashboards/uid/stackup-canary | grep -q '"uid": *"stackup-canary"'; then
   ok "Grafana has loaded the canary dashboard (uid stackup-canary)"
 else

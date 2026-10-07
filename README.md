@@ -29,7 +29,7 @@ The six child Applications are `argo-rollouts`, `cert-manager`, `demo`, `ingress
 - Docker, with at least 6 GB of memory available to it (Docker Desktop: Settings, Resources). Below about 4 GB the controllers crash-loop.
 - `kind`, `kubectl`, and `helm` 3.15 or newer.
 - The `kubectl-argo-rollouts` plugin, used by `make rollout-status` and `make rollout-ui`.
-- `git` and `bash`, plus `make` for the make targets. On Windows, see [Windows, WSL and macOS](#windows-wsl-and-macos).
+- `git`, `bash` and `openssl` (it generates Grafana's admin password), plus `make` for the make targets. On Windows, see [Windows, WSL and macOS](#windows-wsl-and-macos).
 - Ports 80 and 443 free on the host. The kind node publishes them on 127.0.0.1 for ingress.
 - Network access to GitHub and the Helm chart repositories. ArgoCD installs the components from there.
 
@@ -62,7 +62,10 @@ The `*.localtest.me` addresses need Docker to publish the kind node's ports 80 a
 
 Hostnames under `localtest.me` resolve to `127.0.0.1`, so there is nothing to add to a hosts file. Certificates come from a self-signed issuer, so the browser warns once per host.
 
-- Grafana: [https://grafana.localtest.me](https://grafana.localtest.me). Log in as `admin` / `prom-operator` (the chart's default; this cluster holds no real data).
+- Grafana: [https://grafana.localtest.me](https://grafana.localtest.me). Log in as `admin`. `make up` generates the password with `openssl rand` and keeps it in a Secret, so none is stored in this repository; `make up` prints this command at the end:
+  ```bash
+  kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d
+  ```
 - The canary dashboard: [https://grafana.localtest.me/d/stackup-canary](https://grafana.localtest.me/d/stackup-canary). It ships with the demo chart (`helm/demo/dashboards/canary.json`) and shows the gate's success-rate query, one line per ReplicaSet, against the 0.95 line, requests by status code, 5xx responses by pod, and ready pods per ReplicaSet.
 - ArgoCD: [https://argocd.localtest.me](https://argocd.localtest.me). Log in as `admin`; the password is in a Secret:
   ```bash
