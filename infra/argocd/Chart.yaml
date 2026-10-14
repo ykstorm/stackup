@@ -19,5 +19,5 @@ maintainers:
 dependencies:
   # Pinned, not floated. Bump deliberately and re-run `helm dependency build`.
   - name: argo-cd
-    version: 9.5.21
+    version: 10.10.3
     repository: https://argoproj.github.io/argo-helm
