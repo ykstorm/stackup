@@ -30,7 +30,7 @@ CLUSTER_NAME=stackup
 KIND_CONFIG=kind/cluster.yaml
 CALICO_VERSION=v3.28.2
 # Keep equal to appVersion in infra/argocd/Chart.yaml (lint.sh checks).
-ARGOCD_VERSION=v3.4.3
+ARGOCD_VERSION=v3.5.5
 NAMESPACE=app
 # Read by the Grafana chart through grafana.admin.existingSecret in
 # infra/kube-prometheus-stack/values.yaml.
