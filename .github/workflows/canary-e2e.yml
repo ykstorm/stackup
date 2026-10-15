@@ -33,7 +33,7 @@ on:
 
 env:
   # Keep equal to appVersion in infra/argo-rollouts/Chart.yaml (lint.sh checks).
-  ARGO_ROLLOUTS_VERSION: v1.9.0
+  ARGO_ROLLOUTS_VERSION: v1.10.1
 
 jobs:
   canary:
@@ -52,7 +52,7 @@ jobs:
           version: v3.15.0
 
       # Same controller version the cluster chart pins (infra/argo-rollouts,
-      # appVersion 1.9.0). The job used to apply the "latest" release
+      # appVersion 1.10.1). The job used to apply the "latest" release
       # client-side. Argo Rollouts v1.10.0 was published on 2026-08-27 with
       # CRDs too large for client-side apply's last-applied annotation, and
       # 2026-10-03 was the first run that hit it. Server-side apply below

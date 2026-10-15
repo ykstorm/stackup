@@ -13,7 +13,7 @@ ArgoCD runs in the `argocd` namespace. It is installed from `infra/argocd`, a wr
 | `cert-manager` | 0 | `jetstack/cert-manager` v1.20.2 with its CRDs, plus `infra/cert-manager/clusterissuer-selfsigned.yaml` | `cert-manager` |
 | `ingress-nginx` | 0 | `ingress-nginx/ingress-nginx` 4.15.1 with `infra/ingress-nginx/values.yaml` | `ingress-nginx` |
 | `kube-prometheus-stack` | 1 | `prometheus-community/kube-prometheus-stack` 84.5.0 with `infra/kube-prometheus-stack/values.yaml`, release `kps` | `monitoring` |
-| `argo-rollouts` | 1 | `infra/argo-rollouts`, a wrapper chart pinning `argo/argo-rollouts` 2.41.0 | `argo-rollouts` |
+| `argo-rollouts` | 1 | `infra/argo-rollouts`, a wrapper chart pinning `argo/argo-rollouts` 2.43.7 | `argo-rollouts` |
 | `demo` | 2 | `helm/demo` with `values.dev.yaml` | `app` |
 
 The root and every child run `syncPolicy.automated` with `prune: true` and `selfHeal: true`. A resource deleted from git is pruned from the cluster, and an edit made outside git is reverted on the next sync. Every child also sets:

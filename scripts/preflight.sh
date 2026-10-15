@@ -12,7 +12,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 CLUSTER_NAME=stackup
 KIND_VERSION=v0.31.0
 # Keep equal to appVersion in infra/argo-rollouts/Chart.yaml (lint.sh checks).
-ROLLOUTS_VERSION=v1.9.0
+ROLLOUTS_VERSION=v1.10.1
 MIN_HELM="3.15"
 # Docker Desktop set to 6 GB reports a little less than that as MemTotal.
 MIN_MEM_MB=5600
