@@ -58,7 +58,7 @@ The ApplicationSet CRD is missing. It is over 1 MB, and a plain `kubectl apply` 
 ```bash
 kubectl get crd applicationsets.argoproj.io
 kubectl apply --server-side --force-conflicts \
-  -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.4.3/manifests/crds/applicationset-crd.yaml
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.5/manifests/crds/applicationset-crd.yaml
 ```
 
 ### `metadata.annotations: Too long: must have at most 262144 bytes`

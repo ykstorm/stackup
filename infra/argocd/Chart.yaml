@@ -10,7 +10,7 @@ description: |-
   reconciles the app-of-apps tree under argocd/ against this repository.
 type: application
 version: 0.1.0
-appVersion: "3.4.3"
+appVersion: "3.5.5"
 home: https://github.com/ykstorm/stackup
 sources:
   - https://github.com/ykstorm/stackup
@@ -19,5 +19,5 @@ maintainers:
 dependencies:
   # Pinned, not floated. Bump deliberately and re-run `helm dependency build`.
   - name: argo-cd
-    version: 9.5.21
+    version: 10.10.3
     repository: https://argoproj.github.io/argo-helm

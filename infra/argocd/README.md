@@ -2,7 +2,7 @@
 
 Installs ArgoCD in the `argocd` namespace: the GitOps control plane. Once it is up, `argocd/root-app.yaml` registers the app-of-apps root, which renders `argocd/apps/` into one child `Application` per component and reconciles them against this repository with automated sync, prune and self-heal.
 
-This directory is a self-contained wrapper chart: `Chart.yaml` pins the upstream `argo/argo-cd` chart (`9.5.21`, ArgoCD `v3.4.3`) as a dependency, so `helm lint` runs in CI and the install needs no separate `helm repo add`. ArgoCD does not manage itself; `scripts/bootstrap.sh` installs it.
+This directory is a self-contained wrapper chart: `Chart.yaml` pins the upstream `argo/argo-cd` chart (`10.10.3`, ArgoCD `v3.5.5`) as a dependency, so `helm lint` runs in CI and the install needs no separate `helm repo add`. ArgoCD does not manage itself; `scripts/bootstrap.sh` installs it.
 
 ## What the values change
 
@@ -17,7 +17,7 @@ This directory is a self-contained wrapper chart: `Chart.yaml` pins the upstream
 ```sh
 for crd in application applicationset appproject; do
   kubectl apply --server-side --force-conflicts \
-    -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.4.3/manifests/crds/${crd}-crd.yaml
+    -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.5/manifests/crds/${crd}-crd.yaml
 done
 
 helm repo add argo https://argoproj.github.io/argo-helm
