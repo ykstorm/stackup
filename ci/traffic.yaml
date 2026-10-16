@@ -39,7 +39,7 @@ spec:
           args:
             - |
               while true; do
-                curl -s -o /dev/null http://demo.app.svc.cluster.local:3000/api/work || true
+                curl -s --connect-timeout 1 --max-time 3 -o /dev/null http://demo.app.svc.cluster.local:3000/api/work || true
                 sleep 0.05
               done
           securityContext:
